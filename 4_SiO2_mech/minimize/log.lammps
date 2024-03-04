@@ -1,0 +1,102 @@
+LAMMPS (2 Aug 2023 - Update 2)
+  using 2 OpenMP thread(s) per MPI task
+timer timeout 0 every 1
+New timer settings: style=normal  mode=nosync  timeout=00:00:00
+include init.mod.lmp
+variable up equal 1.0e-6
+
+# Define the amount of random jiggle for atoms
+# This prevents atoms from staying on saddle points
+variable atomjiggle equal 1.0e-5
+variable seed equal 12345
+
+# real units, elastic constants in GPa
+units		real
+variable cfac equal 1.01325e-4
+variable cunits string GPa
+
+# Define minimization parameters
+variable etol equal 0.0
+variable ftol equal 1.0e-10
+variable maxiter equal 100
+variable maxeval equal 1000
+variable dmax equal 1.0e-2
+
+# Initialization
+dimension       3
+boundary        p p p
+atom_style      full
+timestep        0.5   # fs
+
+# Read the initial sctructure
+# box tilt large
+variable structure string 333SiO2-1-UFF-c
+read_data       ${structure}.data
+read_data       333SiO2-1-UFF-c.data
+Reading data file ...
+  triclinic box = (0 0 0) to (14.6913 12.723 15.9631) with tilt (-7.3456 0 0)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  reading atoms ...
+  243 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.001 seconds
+  read_data CPU = 0.012 seconds
+
+include ff.mod.lmp
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+# pair_coeff * * CHONSi.ff C H O Si
+pair_coeff * * CHOFe.ff O Si
+WARNING: Van der Waals parameters for element SI indicate inner wall+shielding, but earlier atoms indicate a different van der Waals method. This may cause division-by-zero errors. Keeping van der Waals setting for earlier atoms. (src/REAXFF/reaxff_ffield.cpp:251)
+WARNING: Van der Waals parameters for element AL indicate inner wall+shielding, but earlier atoms indicate a different van der Waals method. This may cause division-by-zero errors. Keeping van der Waals setting for earlier atoms. (src/REAXFF/reaxff_ffield.cpp:251)
+WARNING: Changed valency_val to valency_boc for X (src/REAXFF/reaxff_ffield.cpp:296)
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# # Setup neighbor style
+# neighbor 1.0 nsq
+# neigh_modify once no every 1 delay 0 check yes
+
+# Setup minimization style
+min_style	     cg
+min_modify	     dmax ${dmax} line quadratic
+min_modify	     dmax 0.01 line quadratic
+
+# Setup output
+thermo		1
+thermo_style custom step temp pe press pxx lx density vol
+thermo_modify norm no
+
+# Compute initial state
+fix 3 all box/relax  aniso 0.0
+
+# Energy minimization
+print "****Minimization starts.*****"
+****Minimization starts.*****
+minimize ${etol} ${ftol} ${maxiter} ${maxeval}
+minimize 0 ${ftol} ${maxiter} ${maxeval}
+minimize 0 1e-10 ${maxiter} ${maxeval}
+minimize 0 1e-10 100 ${maxeval}
+minimize 0 1e-10 100 1000
+
+variable tmp equal pxx
+variable pxx0 equal ${tmp}
+ERROR: Thermo keyword pxx in variable requires thermo to use/init press (src/thermo.cpp:1187)
+Last command: variable pxx0 equal ${tmp}

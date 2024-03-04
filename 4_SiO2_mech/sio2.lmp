@@ -1,0 +1,91 @@
+# Born matrix 
+
+# define system parameters
+variable        T    equal 300.                  # Temperature in K
+variable        nevery equal 10                  # sampling interval
+variable        nrepeat equal 10                 # number of samples
+variable        nfreq equal ${nevery}*${nrepeat} # length of one average
+variable        nthermo equal ${nfreq}           # interval for thermo output
+# 1 ps :        1e3 fs / 0.5 fs = 2e3 steps
+variable        nequil equal 20*${nthermo}       # steps of equilibration run
+variable        nrun equal 20*${nthermo}          # stpes of equilibrated run
+variable        tdamp equal 50.0                 # time constant for thermostat
+variable        seed equal 123457                # seed for thermostat
+variable        ufac equal 1.01325e-4         # pressure unit conversion, from atm to Gpa
+variable        up equal 2.0e-1                  # the deformation magnitude
+
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+timestep        0.5   # fs
+
+# read initial structure
+read_data 333SiO2-1-UFF-a.data
+
+# Assign the force field 
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no 
+
+
+variable vol equal vol
+thermo 100
+fix aL all ave/time 1 1 1 v_vol ave running
+fix NPT all npt temp $T $T ${tdamp} aniso 1. 1. ${tdamp} fixedpoint 0. 0. 0.
+
+run ${nequil}
+
+unfix NPT
+
+variable newL equal "f_aL^(1./3.)"
+change_box all x final 0 ${newL} y final 0. ${newL} z final 0. ${newL} remap units box
+
+unfix aL
+
+reset_timestep 0
+
+# Conversion variables
+variable kb        equal 1.38065e-23    # J/K
+variable kbt       equal "v_kb*v_T"
+variable at2Pa     equal 101325
+
+
+# Born compute giving <C^b> terms
+# The six virial stress component to compute <C^fl>
+compute     VIR all pressure NULL virial
+compute     born all born/matrix numdiff 1e-6 VIR
+variable s1 equal "-c_VIR[1]*v_at2Pa"
+variable s2 equal "-c_VIR[2]*v_at2Pa"
+variable s3 equal "-c_VIR[3]*v_at2Pa"
+variable s6 equal "-c_VIR[4]*v_at2Pa"
+variable s5 equal "-c_VIR[5]*v_at2Pa"
+variable s4 equal "-c_VIR[6]*v_at2Pa"
+variable press equal press
+
+
+# Average of Born term and vector to store stress
+# for post processing
+fix CB all ave/time 1 ${nthermo} ${nthermo} c_born[*] ave running file born.out overwrite
+fix CPR all ave/time 1 1 1 c_VIR[*] file vir.out
+fix APR all ave/time 1 1 1 v_press ave running
+fix VEC all vector 1 v_s1 v_s2 v_s3 v_s4 v_s5 v_s6
+
+thermo      ${nthermo}
+thermo_style    custom step temp press f_APR c_born[1] f_CB[1] c_born[12] f_CB[12] c_born[4] f_CB[4] vol
+thermo_modify line multi
+
+fix     1 all nvt temp $T $T ${tdamp}
+
+# save trajectory
+dump dump_main all custom ${nthermo} dump_main.lammpstrj id type x y z
+run         ${nrun}

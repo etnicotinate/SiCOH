@@ -1,0 +1,4233 @@
+LAMMPS (2 Aug 2023 - Update 2)
+  using 1 OpenMP thread(s) per MPI task
+# Initialization
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+timestep        0.5   # fs
+
+# Define MD parameters
+variable nevery equal 10                  # sampling interval
+variable nrepeat equal 10                 # number of samples
+variable nthermo equal ${nevery}*${nrepeat}           # interval for thermo output
+variable nthermo equal 10*${nrepeat}           
+variable nthermo equal 10*10           
+variable nfreq equal ${nthermo} # length of one average
+variable nfreq equal 100 
+# 1 ps : 1e3 fs / 0.5 fs = 2e3 steps
+variable nequil equal 20*${nthermo}       # steps of equilibration run 20
+variable nequil equal 20*100       
+variable nrun equal 20*${nthermo}          # stpes of equilibrated run 20
+variable nrun equal 20*100          
+variable temp equal 300.0                # temperature of initial sample
+variable tdamp equal 50.0                 # time constant for thermostat
+variable seed equal 123457                # seed for thermostat
+variable ufac equal 1.01325e-4         # pressure unit conversion, from atm to Gpa
+variable up equal 0.01                  # the deformation magnitude 2.0e-2
+
+# Read the initial sctructure
+# box tilt large
+variable structure string 333-HD-100C-11-VASP
+read_data       ${structure}.data
+read_data       333-HD-100C-11-VASP.data
+Reading data file ...
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  reading atoms ...
+  366 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.001 seconds
+  read_data CPU = 0.006 seconds
+
+# Energy minimization
+print "*****Minimization starts.*****"
+*****Minimization starts.*****
+velocity        all create ${temp} ${seed} dist gaussian
+velocity        all create 300 ${seed} dist gaussian
+velocity        all create 300 123457 dist gaussian
+minimize 1.0e-6 1.0e-6 100 1000
+WARNING: No pairwise cutoff or binsize set. Atom sorting therefore disabled. (src/atom.cpp:2366)
+WARNING: Communication cutoff is 0.0. No ghost atoms will be generated. Atoms may get lost. (src/comm_brick.cpp:210)
+Per MPI rank memory allocation (min/avg/max) = 6.365 | 6.365 | 6.365 Mbytes
+   Step          Temp          E_pair         E_mol          TotEng         Press     
+         0   300            0              0              326.3987       4163.5214    
+         1   300            0              0              326.3987       4163.5214    
+Loop time of 5.45059e-05 on 8 procs for 1 steps with 366 atoms
+
+43.6% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+Minimization stats:
+  Stopping criterion = search direction is not downhill
+  Energy initial, next-to-last, final = 
+                     0                  0                  0
+  Force two-norm initial, final = 0 0
+  Force max component initial, final = 0 0
+  Final line search alpha, max atom move = 0 0
+  Iterations, force evaluations = 1 0
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0          | 0          | 0          |   0.0 |  0.00
+Bond    | 1.16e-07   | 1.6425e-07 | 2.01e-07   |   0.0 |  0.30
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 8.06e-07   | 1.262e-06  | 1.551e-06  |   0.0 |  2.32
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 5.308e-05  |            |       | 97.38
+
+Nlocal:          45.75 ave          53 max          35 min
+Histogram: 1 0 1 0 1 1 0 1 1 2
+Nghost:              0 ave           0 max           0 min
+Histogram: 8 0 0 0 0 0 0 0 0 0
+Neighs:              0 ave           0 max           0 min
+Histogram: 8 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 0
+Ave neighs/atom = 0
+Ave special neighs/atom = 0
+Neighbor list builds = 0
+Dangerous builds = 0
+min_style cg
+
+# Equilibration
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+thermo_style custom step temp pe press f_avgp[1] density vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+run ${nequil}
+run 2000
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+
+- pair reaxff command: doi:10.1016/j.parco.2011.08.005
+
+@Article{Aktulga12,
+ author = {H. M. Aktulga and J. C. Fogarty and S. A. Pandit and A. Y. Grama},
+ title = {Parallel Reactive Molecular Dynamics: {N}umerical Methods and Algorithmic Techniques},
+ journal = {Parallel Computing},
+ year =    2012,
+ volume =  38,
+ number =  {4--5},
+ pages =   {245--259}
+}
+
+- fix qeq/reaxff command: doi:10.1016/j.parco.2011.08.005
+
+@Article{Aktulga12,
+ author = {H. M. Aktulga and J. C. Fogarty and S. A. Pandit and A. Y. Grama},
+ title = {Parallel Reactive Molecular Dynamics: {N}umerical Methods and Algorithmic Techniques},
+ journal = {Parallel Computing},
+ year =    2012,
+ volume =  38,
+ pages =   {245--259}
+}
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+WARNING: Fix qeq/reaxff group is not charge neutral, net charge = -29.52 (src/REAXFF/fix_qeq_reaxff.cpp:392)
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 136.2 | 139 | 142.6 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]       Density         Volume    
+         0   300           -43876.171      80037.986      0              1.9939932      3583.6077    
+       100   407.20125     -44069.207      18469.629      18433.911      1.9939932      3583.6077    
+       200   374.5784      -44141.795      34501.093      15077.219      1.9939932      3583.6077    
+       300   348.62402     -44215.908      17600.245      16075.137      1.9939932      3583.6077    
+       400   313.86666     -44251.8        21321.08       20840.29       1.9939932      3583.6077    
+       500   313.14482     -44310.897      25445.947      23243.733      1.9939932      3583.6077    
+       600   289.58802     -44320.99       16716.536      18408.464      1.9939932      3583.6077    
+       700   311.09503     -44348.158      26136.467      19077.215      1.9939932      3583.6077    
+       800   302.56489     -44329.922      20496.058      19492.038      1.9939932      3583.6077    
+       900   293.47297     -44309.407      12956.137      18078.566      1.9939932      3583.6077    
+      1000   312.54307     -44312.401      7594.7572      12078.286      1.9939932      3583.6077    
+      1100   327.42441     -44328.101      18738.659      17102.778      1.9939932      3583.6077    
+      1200   314.06571     -44345.448      17085.561      19949.435      1.9939932      3583.6077    
+      1300   307.68206     -44363.256      17038.684      18745.73       1.9939932      3583.6077    
+      1400   294.79164     -44362.773      20700.992      19003.779      1.9939932      3583.6077    
+      1500   292.83787     -44345.514      20707.762      15231.412      1.9939932      3583.6077    
+      1600   300.86448     -44338.075      20092.236      14601.203      1.9939932      3583.6077    
+      1700   312.09098     -44349.818      19979.781      15089.886      1.9939932      3583.6077    
+      1800   296.94427     -44363.896      11973.1        16439.734      1.9939932      3583.6077    
+      1900   285.31169     -44375.332      28565.114      23765.607      1.9939932      3583.6077    
+      2000   288.82459     -44364.431      16106.198      18496.187      1.9939932      3583.6077    
+Loop time of 122.013 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.708 ns/day, 33.892 hours/ns, 16.392 timesteps/s, 5.999 katom-step/s
+99.0% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 77.539     | 97.157     | 103.51     |  78.5 | 79.63
+Bond    | 0.00072546 | 0.00085821 | 0.001065   |   0.0 |  0.00
+Neigh   | 6.0754     | 7.5977     | 8.1573     |  22.9 |  6.23
+Comm    | 1.6482     | 8.0162     | 27.645     | 273.4 |  6.57
+Output  | 0.0011215  | 0.0013076  | 0.0022877  |   1.0 |  0.00
+Modify  | 8.6465     | 9.1959     | 10.711     |  20.7 |  7.54
+Other   |            | 0.04388    |            |       |  0.04
+
+Nlocal:          45.75 ave          59 max          36 min
+Histogram: 1 1 2 0 1 1 1 0 0 1
+Nghost:        3586.62 ave        3718 max        3461 min
+Histogram: 1 1 0 1 2 0 1 0 1 1
+Neighs:        32807.6 ave       41670 max       26061 min
+Histogram: 1 1 2 0 0 1 1 1 0 1
+
+Total # of neighbors = 262461
+Ave neighs/atom = 717.10656
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+# Save the optimized structure
+write_data ${structure}_opt.data
+write_data 333-HD-100C-11-VASP_opt.data
+System init for write_data ...
+
+# Save initial pressure, box size
+variable pxx0 equal f_avgp[1]
+variable pyy0 equal f_avgp[2]
+variable pzz0 equal f_avgp[3]
+variable pxy0 equal f_avgp[4]
+variable pxz0 equal f_avgp[5]
+variable pyz0 equal f_avgp[6]
+
+# use tmp to save initial box length
+variable tmp equal lx
+variable lx0 equal ${tmp}
+variable lx0 equal 15.0372
+variable tmp equal ly
+variable ly0 equal ${tmp}
+variable ly0 equal 13.535
+variable tmp equal lz
+variable lz0 equal ${tmp}
+variable lz0 equal 17.6074
+
+# define the derivatives, w.r.t. strain tensor
+# Constants uses $, variables use v_
+variable d1 equal -(v_pxx1-${pxx0})/(v_delta/v_len0)*${ufac}
+variable d1 equal -(v_pxx1-18496.1874441304)/(v_delta/v_len0)*${ufac}
+variable d1 equal -(v_pxx1-18496.1874441304)/(v_delta/v_len0)*0.000101325
+variable d2 equal -(v_pyy1-${pyy0})/(v_delta/v_len0)*${ufac}
+variable d2 equal -(v_pyy1-17362.2885879629)/(v_delta/v_len0)*${ufac}
+variable d2 equal -(v_pyy1-17362.2885879629)/(v_delta/v_len0)*0.000101325
+variable d3 equal -(v_pzz1-${pzz0})/(v_delta/v_len0)*${ufac}
+variable d3 equal -(v_pzz1-19578.5205568629)/(v_delta/v_len0)*${ufac}
+variable d3 equal -(v_pzz1-19578.5205568629)/(v_delta/v_len0)*0.000101325
+variable d4 equal -(v_pyz1-${pyz0})/(v_delta/v_len0)*${ufac}*0.5
+variable d4 equal -(v_pyz1--431.515931078798)/(v_delta/v_len0)*${ufac}*0.5
+variable d4 equal -(v_pyz1--431.515931078798)/(v_delta/v_len0)*0.000101325*0.5
+variable d5 equal -(v_pxz1-${pxz0})/(v_delta/v_len0)*${ufac}*0.5
+variable d5 equal -(v_pxz1-3365.22772104334)/(v_delta/v_len0)*${ufac}*0.5
+variable d5 equal -(v_pxz1-3365.22772104334)/(v_delta/v_len0)*0.000101325*0.5
+variable d6 equal -(v_pxy1-${pxy0})/(v_delta/v_len0)*${ufac}*0.5
+variable d6 equal -(v_pxy1--71.0508336155479)/(v_delta/v_len0)*${ufac}*0.5
+variable d6 equal -(v_pxy1--71.0508336155479)/(v_delta/v_len0)*0.000101325*0.5
+
+# Write restart
+write_restart equil.res
+System init for write_restart ...
+
+# dir: direction
+# uxx Perturbation
+variable dir equal 1
+include displace.mod.lmp
+# Find which reference length to use
+if "${dir} == 1" then    "variable len0 equal ${lx0}"
+variable len0 equal ${lx0}
+variable len0 equal 15.0372
+if "${dir} == 2" then    "variable len0 equal ${ly0}"
+if "${dir} == 3" then    "variable len0 equal ${lz0}"
+if "${dir} == 4" then    "variable len0 equal ${lz0}"
+if "${dir} == 5" then    "variable len0 equal ${lz0}"
+if "${dir} == 6" then    "variable len0 equal ${ly0}"
+
+# Reset box and simulation parameters
+clear
+  using 1 OpenMP thread(s) per MPI task
+# box tilt large
+read_restart equil.res
+Reading restart file ...
+  restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
+  restoring atom style full from restart
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  pair style reaxff stores no restart info
+  366 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.001 seconds
+  read_restart CPU = 0.004 seconds
+print "*****Negative-change ${dir} starts.*****"
+*****Negative-change 1 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+Resetting global fix info from restart file:
+  fix style: nvt, fix ID: 4
+
+# Negative deformation
+variable delta equal -${up}*${len0}
+variable delta equal -0.01*${len0}
+variable delta equal -0.01*15.0372
+variable deltaxy equal -${up}*xy
+variable deltaxy equal -0.01*xy
+variable deltaxz equal -${up}*xz
+variable deltaxz equal -0.01*xz
+variable deltayz equal -${up}*yz
+variable deltayz equal -0.01*yz
+if "${dir} == 1" then    "change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box"
+change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box
+change_box all x delta 0 -0.150372 xy delta ${deltaxy} xz delta ${deltaxz} remap units box
+change_box all x delta 0 -0.150372 xy delta 0.074931 xz delta ${deltaxz} remap units box
+change_box all x delta 0 -0.150372 xy delta 0.074931 xz delta 0.001585 remap units box
+Changing box ...
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (14.886828 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (14.886828 13.535 17.6074) with tilt (-7.418169 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (14.886828 13.535 17.6074) with tilt (-7.418169 -0.156915 0.0807)
+if "${dir} == 2" then    "change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box"
+if "${dir} == 3" then    "change_box all z delta 0 ${delta} remap units box"
+if "${dir} == 4" then    "change_box all yz delta ${delta} remap units box"
+if "${dir} == 5" then    "change_box all xz delta ${delta} remap units box"
+if "${dir} == 6" then    "change_box all xy delta ${delta} remap units box"
+
+# Run MD for Negative deformation
+# save trajectory
+dump dump_neg${dir} all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg1 all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg1 all custom 100 dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg1 all custom 100 dump/neg_deform1.lammpstrj id type x y z
+run ${nrun}
+run 2000
+All restart file global fix info was re-assigned
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 136 | 140.1 | 144.8 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   288.82459     -44341.802      54770.65       0              3547.7717    
+       100   303.22907     -44343.177      20744.101      28643.357      3547.7717    
+       200   304.79153     -44350.025      19009.702      26172.21       3547.7717    
+       300   286.00183     -44362.84       32373.225      25246.995      3547.7717    
+       400   279.89879     -44369.984      21589.717      21161.554      3547.7717    
+       500   289.01779     -44369.919      18751.556      24327.72       3547.7717    
+       600   292.96961     -44359.172      28981.376      29990.57       3547.7717    
+       700   292.37267     -44338.623      24020.473      26171.491      3547.7717    
+       800   311.49347     -44344.817      12513.433      16976.561      3547.7717    
+       900   283.70491     -44345.073      15115.516      27760.114      3547.7717    
+      1000   286.39589     -44373.439      27775.662      24375.501      3547.7717    
+      1100   288.82251     -44371.502      19490.037      17257.882      3547.7717    
+      1200   299.53378     -44360.222      14152.561      24856.992      3547.7717    
+      1300   305.54524     -44345.466      20439.101      23602.907      3547.7717    
+      1400   290.68013     -44332.68       33422.846      31952.974      3547.7717    
+      1500   302.99302     -44352.429      20937.754      28764.295      3547.7717    
+      1600   305.56984     -44364.72       23153.792      23887.376      3547.7717    
+      1700   283.77534     -44353.497      17538.203      30441.375      3547.7717    
+      1800   309.18361     -44389.224      21340.808      23725.973      3547.7717    
+      1900   290.47935     -44404.456      14247.174      19718.925      3547.7717    
+      2000   281.51483     -44393.272      17880.055      24482.902      3547.7717    
+Loop time of 124.273 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.695 ns/day, 34.520 hours/ns, 16.094 timesteps/s, 5.890 katom-step/s
+99.0% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 99.773     | 102.25     | 105.79     |  21.4 | 82.28
+Bond    | 0.00072737 | 0.00088945 | 0.0010864  |   0.0 |  0.00
+Neigh   | 7.5393     | 7.8996     | 8.2477     |   8.9 |  6.36
+Comm    | 1.3903     | 4.9491     | 7.4451     |  97.6 |  3.98
+Output  | 0.0051823  | 0.0079755  | 0.009426   |   1.8 |  0.01
+Modify  | 8.7834     | 9.1177     | 9.4656     |   8.0 |  7.34
+Other   |            | 0.04343    |            |       |  0.03
+
+Nlocal:          45.75 ave          58 max          38 min
+Histogram: 3 1 0 0 0 1 1 0 1 1
+Nghost:        3613.75 ave        3732 max        3497 min
+Histogram: 1 1 1 0 1 1 0 2 0 1
+Neighs:        33152.6 ave       41481 max       27492 min
+Histogram: 3 1 0 0 0 1 1 0 1 1
+
+Total # of neighbors = 265221
+Ave neighs/atom = 724.64754
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+undump dump_neg${dir}
+undump dump_neg1
+
+# Run equilibration
+print "*****Equilibration neg${dir} starts.*****"
+*****Equilibration neg1 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+unfix avgp
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+run ${nequil}
+run 2000
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 136 | 140.2 | 144.7 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   281.51483     -44393.272      17880.146      0              3547.7717    
+       100   287.99896     -44377.103      16651.007      19378.806      3547.7717    
+       200   305.23929     -44374.239      13855.537      25625.661      3547.7717    
+       300   298.8329      -44363.561      30178.813      31121.614      3547.7717    
+       400   307.8812      -44373.705      29289.1        31081.704      3547.7717    
+       500   290.07866     -44366.691      16543.842      20358.37       3547.7717    
+       600   289.53675     -44371.883      10833.92       26172.455      3547.7717    
+       700   301.04789     -44361.832      7710.5615      20380.117      3547.7717    
+       800   302.03624     -44345.951      25848.033      23455.045      3547.7717    
+       900   288.43161     -44342.801      17956.96       23013.893      3547.7717    
+      1000   272.56199     -44359.278      11572.263      21783.887      3547.7717    
+      1100   304.61602     -44396.609      25777.534      27604.248      3547.7717    
+      1200   298.06666     -44382.787      23909.791      32036.45       3547.7717    
+      1300   293.66304     -44360.647      12438.714      21380.401      3547.7717    
+      1400   301.60733     -44360.515      22327.744      27456.886      3547.7717    
+      1500   305.767       -44366.898      26620.551      30657.03       3547.7717    
+      1600   294.73936     -44369.649      17497.934      24038.196      3547.7717    
+      1700   293.54165     -44386.189      11286.981      20442.393      3547.7717    
+      1800   298.23647     -44395.004      11291.78       21780.02       3547.7717    
+      1900   288.86042     -44348.808      16719.46       23783.779      3547.7717    
+      2000   303.19786     -44346.519      18431.197      22284.063      3547.7717    
+Loop time of 123.685 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.699 ns/day, 34.357 hours/ns, 16.170 timesteps/s, 5.918 katom-step/s
+99.1% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 84.843     | 99.545     | 104.65     |  57.7 | 80.48
+Bond    | 0.00071946 | 0.0008986  | 0.0010534  |   0.0 |  0.00
+Neigh   | 6.5408     | 7.7148     | 8.3121     |  17.8 |  6.24
+Comm    | 1.9446     | 7.0691     | 21.754     | 216.2 |  5.72
+Output  | 0.00095198 | 0.0011577  | 0.0024389  |   1.4 |  0.00
+Modify  | 8.7327     | 9.3116     | 10.506     |  16.3 |  7.53
+Other   |            | 0.04264    |            |       |  0.03
+
+Nlocal:          45.75 ave          56 max          33 min
+Histogram: 1 0 1 1 1 0 1 0 0 3
+Nghost:        3634.38 ave        3755 max        3523 min
+Histogram: 1 1 0 1 1 2 0 1 0 1
+Neighs:          33095 ave       39977 max       24128 min
+Histogram: 1 0 2 0 1 0 1 0 0 3
+
+Total # of neighbors = 264760
+Ave neighs/atom = 723.38798
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+
+# Obtain new stress tensor Negative deformation, convert index from LAMMPS to Voigt
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1neg equal ${d1}
+variable C1neg equal 38.3806479062101
+variable C2neg equal ${d2}
+variable C2neg equal 30.6155768404541
+variable C3neg equal ${d3}
+variable C3neg equal -19.1838568741352
+variable C4neg equal ${d4}
+variable C4neg equal 14.6664153469989
+variable C5neg equal ${d5}
+variable C5neg equal -18.7913318072955
+variable C6neg equal ${d6}
+variable C6neg equal 1.06909904782551
+
+# Reset box and simulation parameters
+clear
+  using 1 OpenMP thread(s) per MPI task
+# box tilt large
+read_restart equil.res
+Reading restart file ...
+  restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
+  restoring atom style full from restart
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  pair style reaxff stores no restart info
+  366 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_restart CPU = 0.003 seconds
+print "*****Positive-change ${dir} starts.*****"
+*****Positive-change 1 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+Resetting global fix info from restart file:
+  fix style: nvt, fix ID: 4
+
+# Positive deformation
+variable delta equal ${up}*${len0}
+variable delta equal 0.01*${len0}
+variable delta equal 0.01*15.0372
+variable deltaxy equal ${up}*xy
+variable deltaxy equal 0.01*xy
+variable deltaxz equal ${up}*xz
+variable deltaxz equal 0.01*xz
+variable deltayz equal ${up}*yz
+variable deltayz equal 0.01*yz
+if "${dir} == 1" then    "change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box"
+change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box
+change_box all x delta 0 0.150372 xy delta ${deltaxy} xz delta ${deltaxz} remap units box
+change_box all x delta 0 0.150372 xy delta -0.074931 xz delta ${deltaxz} remap units box
+change_box all x delta 0 0.150372 xy delta -0.074931 xz delta -0.001585 remap units box
+Changing box ...
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.187572 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.187572 13.535 17.6074) with tilt (-7.568031 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.187572 13.535 17.6074) with tilt (-7.568031 -0.160085 0.0807)
+if "${dir} == 2" then    "change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box"
+if "${dir} == 3" then    "change_box all z delta 0 ${delta} remap units box"
+if "${dir} == 4" then    "change_box all yz delta ${delta} remap units box"
+if "${dir} == 5" then    "change_box all xz delta ${delta} remap units box"
+if "${dir} == 6" then    "change_box all xy delta ${delta} remap units box"
+
+# Run positive deformation MD
+# save trajectory
+dump dump_pos${dir} all custom ${nthermo} dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos1 all custom ${nthermo} dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos1 all custom 100 dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos1 all custom 100 dump/pos_deform1.lammpstrj id type x y z
+run ${nrun}
+run 2000
+All restart file global fix info was re-assigned
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.1 | 139.3 | 143.5 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   288.82459     -44357.866     -22355.262      0              3619.4438    
+       100   309.59884     -44365.199      13463.95       4989.5992      3619.4438    
+       200   298.61494     -44357.022      4880.0094      8769.6522      3619.4438    
+       300   292.9476      -44370.111      18512.918      8017.6471      3619.4438    
+       400   263.33392     -44374.393      17141.376      12033.665      3619.4438    
+       500   277.01471     -44391.26       8.9543562      7086.9843      3619.4438    
+       600   280.13508     -44375.333      17636.199      12767.17       3619.4438    
+       700   303.71494     -44386.926      7893.095       9726.8093      3619.4438    
+       800   300.56754     -44365.427      11934.932      4710.2697      3619.4438    
+       900   312.66952     -44373.937      942.95444      3568.7781      3619.4438    
+      1000   304.63491     -44383.736      2056.1677      5631.5197      3619.4438    
+      1100   279.46102     -44387.228     -4556.4854     -2908.8873      3619.4438    
+      1200   280.3634      -44382.869     -3711.7385     -1955.8666      3619.4438    
+      1300   287.03116     -44372.332      13748.774      11335.024      3619.4438    
+      1400   318.26668     -44395.622      14409.151      16191.387      3619.4438    
+      1500   327.87199     -44379.107      4112.8433      8178.7639      3619.4438    
+      1600   309.79196     -44342.335      2891.6157      5806.4623      3619.4438    
+      1700   292.98551     -44345.518      1967.243       5964.5624      3619.4438    
+      1800   286.86954     -44364.602      12971.587      3367.6943      3619.4438    
+      1900   275.5331      -44361.848      13347.804      6970.674       3619.4438    
+      2000   313.66614     -44396.111      9747.0761      7114.2946      3619.4438    
+Loop time of 120.811 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.715 ns/day, 33.559 hours/ns, 16.555 timesteps/s, 6.059 katom-step/s
+99.0% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 91.969     | 98.576     | 103.03     |  32.0 | 81.60
+Bond    | 0.00072626 | 0.00084753 | 0.001002   |   0.0 |  0.00
+Neigh   | 7.1241     | 7.7097     | 8.1224     |  11.4 |  6.38
+Comm    | 1.0564     | 5.5365     | 12.127     | 135.4 |  4.58
+Output  | 0.0046384  | 0.0068657  | 0.008097   |   1.6 |  0.01
+Modify  | 8.5443     | 8.9384     | 9.5446     |  10.5 |  7.40
+Other   |            | 0.04256    |            |       |  0.04
+
+Nlocal:          45.75 ave          56 max          36 min
+Histogram: 1 0 2 1 0 0 1 1 1 1
+Nghost:           3564 ave        3675 max        3456 min
+Histogram: 2 0 0 2 0 1 1 0 1 1
+Neighs:        32439.9 ave       39182 max       25723 min
+Histogram: 1 0 3 0 0 0 1 1 1 1
+
+Total # of neighbors = 259519
+Ave neighs/atom = 709.06831
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+undump dump_pos${dir}
+undump dump_pos1
+
+# Run equilibration
+print "*****Equilibration pos${dir} starts.*****"
+*****Equilibration pos1 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+unfix avgp
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+run ${nequil}
+run 2000
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.2 | 139.3 | 143.5 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   313.66614     -44396.111      9747.0785      0              3619.4438    
+       100   282.77486     -44356.588      4841.7341      9424.6102      3619.4438    
+       200   317.97114     -44368.821      11145.469      8617.8517      3619.4438    
+       300   335.26181     -44359.317      12696.434      6997.4457      3619.4438    
+       400   308.34068     -44354.077      18206.045      6401.0937      3619.4438    
+       500   302.52951     -44375.141      6675.8342      1622.0722      3619.4438    
+       600   301.84011     -44377.568      13378.715      5501.0275      3619.4438    
+       700   310.96238     -44384.106      14096.83       7564.4592      3619.4438    
+       800   315.92267     -44376.763      12337.765      6730.1149      3619.4438    
+       900   312.0208      -44367.354      16682.895      8974.2545      3619.4438    
+      1000   278.81409     -44347.154      9111.5976      5501.9895      3619.4438    
+      1100   297.82859     -44390.624      13404.115      5008.932       3619.4438    
+      1200   299.56461     -44390.091     -2651.1988      6234.0643      3619.4438    
+      1300   319.23301     -44375.689      16053.34       7147.0104      3619.4438    
+      1400   314.82222     -44360.772      26326.791      12449.687      3619.4438    
+      1500   308.80564     -44369.997      5311.9081      8281.2174      3619.4438    
+      1600   304.57522     -44378.36       11672.637      11441.494      3619.4438    
+      1700   293.8525      -44365.296      3146.6159      9682.1297      3619.4438    
+      1800   302.01908     -44363.684      17488.696      11373.058      3619.4438    
+      1900   326.14299     -44347.436      5797.6056      17485.603      3619.4438    
+      2000   317.76979     -44348.013      7534.8926      2425.4938      3619.4438    
+Loop time of 120.799 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.715 ns/day, 33.555 hours/ns, 16.556 timesteps/s, 6.060 katom-step/s
+99.0% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 85.151     | 97.489     | 101.58     |  49.4 | 80.70
+Bond    | 0.00073249 | 0.0008386  | 0.0010013  |   0.0 |  0.00
+Neigh   | 6.7222     | 7.6773     | 8.1713     |  14.8 |  6.36
+Comm    | 2.4742     | 6.5814     | 18.898     | 189.9 |  5.45
+Output  | 0.00090624 | 0.0010598  | 0.0017121  |   0.8 |  0.00
+Modify  | 8.5254     | 9.0065     | 9.9855     |  13.7 |  7.46
+Other   |            | 0.0424     |            |       |  0.04
+
+Nlocal:          45.75 ave          57 max          34 min
+Histogram: 1 0 1 2 0 1 0 1 1 1
+Nghost:         3549.5 ave        3652 max        3455 min
+Histogram: 2 0 1 1 0 1 0 1 1 1
+Neighs:        32449.9 ave       39895 max       24271 min
+Histogram: 1 0 1 2 0 0 1 0 2 1
+
+Total # of neighbors = 259599
+Ave neighs/atom = 709.28689
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+
+# Obtain new stress tensor, convert index from LAMMPS to Voigt
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure tensor
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1pos equal ${d1}
+variable C1pos equal 162.8363028858
+variable C2pos equal ${d2}
+variable C2pos equal 170.295174941394
+variable C3pos equal ${d3}
+variable C3pos equal 132.583689909899
+variable C4pos equal ${d4}
+variable C4pos equal -9.1892590437137
+variable C5pos equal ${d5}
+variable C5pos equal 20.7119183478065
+variable C6pos equal ${d6}
+variable C6pos equal -6.2663754298526
+
+# Combine positive and negative
+variable C1${dir} equal 0.5*(${C1neg}+${C1pos})
+variable C11 equal 0.5*(${C1neg}+${C1pos})
+variable C11 equal 0.5*(38.3806479062101+${C1pos})
+variable C11 equal 0.5*(38.3806479062101+162.8363028858)
+variable C2${dir} equal 0.5*(${C2neg}+${C2pos})
+variable C21 equal 0.5*(${C2neg}+${C2pos})
+variable C21 equal 0.5*(30.6155768404541+${C2pos})
+variable C21 equal 0.5*(30.6155768404541+170.295174941394)
+variable C3${dir} equal 0.5*(${C3neg}+${C3pos})
+variable C31 equal 0.5*(${C3neg}+${C3pos})
+variable C31 equal 0.5*(-19.1838568741352+${C3pos})
+variable C31 equal 0.5*(-19.1838568741352+132.583689909899)
+variable C4${dir} equal 0.5*(${C4neg}+${C4pos})
+variable C41 equal 0.5*(${C4neg}+${C4pos})
+variable C41 equal 0.5*(14.6664153469989+${C4pos})
+variable C41 equal 0.5*(14.6664153469989+-9.1892590437137)
+variable C5${dir} equal 0.5*(${C5neg}+${C5pos})
+variable C51 equal 0.5*(${C5neg}+${C5pos})
+variable C51 equal 0.5*(-18.7913318072955+${C5pos})
+variable C51 equal 0.5*(-18.7913318072955+20.7119183478065)
+variable C6${dir} equal 0.5*(${C6neg}+${C6pos})
+variable C61 equal 0.5*(${C6neg}+${C6pos})
+variable C61 equal 0.5*(1.06909904782551+${C6pos})
+variable C61 equal 0.5*(1.06909904782551+-6.2663754298526)
+
+# Delete dir to make sure it is not reused
+variable dir delete
+# uyy Perturbation
+variable dir equal 2
+include displace.mod.lmp
+# Find which reference length to use
+if "${dir} == 1" then    "variable len0 equal ${lx0}"
+if "${dir} == 2" then    "variable len0 equal ${ly0}"
+variable len0 equal ${ly0}
+variable len0 equal 13.535
+if "${dir} == 3" then    "variable len0 equal ${lz0}"
+if "${dir} == 4" then    "variable len0 equal ${lz0}"
+if "${dir} == 5" then    "variable len0 equal ${lz0}"
+if "${dir} == 6" then    "variable len0 equal ${ly0}"
+
+# Reset box and simulation parameters
+clear
+  using 1 OpenMP thread(s) per MPI task
+# box tilt large
+read_restart equil.res
+Reading restart file ...
+  restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
+  restoring atom style full from restart
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  pair style reaxff stores no restart info
+  366 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_restart CPU = 0.004 seconds
+print "*****Negative-change ${dir} starts.*****"
+*****Negative-change 2 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+Resetting global fix info from restart file:
+  fix style: nvt, fix ID: 4
+
+# Negative deformation
+variable delta equal -${up}*${len0}
+variable delta equal -0.01*${len0}
+variable delta equal -0.01*13.535
+variable deltaxy equal -${up}*xy
+variable deltaxy equal -0.01*xy
+variable deltaxz equal -${up}*xz
+variable deltaxz equal -0.01*xz
+variable deltayz equal -${up}*yz
+variable deltayz equal -0.01*yz
+if "${dir} == 1" then    "change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box"
+if "${dir} == 2" then    "change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box"
+change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box
+change_box all y delta 0 -0.13535 yz delta ${deltayz} remap units box
+change_box all y delta 0 -0.13535 yz delta -0.000807 remap units box
+Changing box ...
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.0372 13.39965 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.0372 13.39965 17.6074) with tilt (-7.4931 -0.1585 0.079893)
+if "${dir} == 3" then    "change_box all z delta 0 ${delta} remap units box"
+if "${dir} == 4" then    "change_box all yz delta ${delta} remap units box"
+if "${dir} == 5" then    "change_box all xz delta ${delta} remap units box"
+if "${dir} == 6" then    "change_box all xy delta ${delta} remap units box"
+
+# Run MD for Negative deformation
+# save trajectory
+dump dump_neg${dir} all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg2 all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg2 all custom 100 dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg2 all custom 100 dump/neg_deform2.lammpstrj id type x y z
+run ${nrun}
+run 2000
+All restart file global fix info was re-assigned
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 136.7 | 140.8 | 145.4 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   288.82459     -44343.297      58004.343      0              3547.7717    
+       100   300.33259     -44341.921      21393.077      22102.595      3547.7717    
+       200   310.07126     -44358.897      21320.514      22959.032      3547.7717    
+       300   294.68301     -44374.087      33226.43       22787.578      3547.7717    
+       400   278.32755     -44368.946      21401.021      21800.865      3547.7717    
+       500   300.91492     -44387.622      19860.993      14839.249      3547.7717    
+       600   295.86937     -44364.527      18009.606      18247.638      3547.7717    
+       700   310.15906     -44358.165      23098.583      21396.543      3547.7717    
+       800   300.06794     -44344.005      11748.294      15196.398      3547.7717    
+       900   307.48499     -44381.383      7797.1819      19103.992      3547.7717    
+      1000   281.64187     -44376.731      17505.504      17561.345      3547.7717    
+      1100   288.23697     -44376.401      14752.266      17420.513      3547.7717    
+      1200   306.92833     -44372.516      8962.1321      7001.7265      3547.7717    
+      1300   311.05819     -44367.103      31333.023      25917.34       3547.7717    
+      1400   325.3751      -44400.326      21176.336      25275.449      3547.7717    
+      1500   312.43397     -44398.886      29761.086      18965.809      3547.7717    
+      1600   295.87327     -44393.408      25518.752      22150.504      3547.7717    
+      1700   283.65533     -44390.974      15343.296      19532.021      3547.7717    
+      1800   293.39854     -44377.086      14259.196      14833.608      3547.7717    
+      1900   293.94683     -44354.945      20644.353      14139.688      3547.7717    
+      2000   308.82721     -44365.605      14771.378      19187.233      3547.7717    
+Loop time of 124.62 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.693 ns/day, 34.617 hours/ns, 16.049 timesteps/s, 5.874 katom-step/s
+99.1% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 98.56      | 103.02     | 105.9      |  24.6 | 82.67
+Bond    | 0.00072854 | 0.00085999 | 0.0010622  |   0.0 |  0.00
+Neigh   | 7.6206     | 8.0063     | 8.391      |   9.3 |  6.42
+Comm    | 1.6058     | 4.5037     | 8.9738     | 118.4 |  3.61
+Output  | 0.0055846  | 0.0071653  | 0.0082293  |   1.1 |  0.01
+Modify  | 8.6625     | 9.0366     | 9.4168     |   8.4 |  7.25
+Other   |            | 0.04368    |            |       |  0.04
+
+Nlocal:          45.75 ave          57 max          36 min
+Histogram: 1 2 1 0 0 0 1 1 1 1
+Nghost:        3627.12 ave        3745 max        3511 min
+Histogram: 1 1 0 1 1 1 0 2 0 1
+Neighs:        33136.8 ave       40787 max       26245 min
+Histogram: 1 1 2 0 0 0 1 1 1 1
+
+Total # of neighbors = 265094
+Ave neighs/atom = 724.30055
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+undump dump_neg${dir}
+undump dump_neg2
+
+# Run equilibration
+print "*****Equilibration neg${dir} starts.*****"
+*****Equilibration neg2 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+unfix avgp
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+run ${nequil}
+run 2000
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 136.8 | 140.8 | 145.3 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   308.82721     -44365.605      14771.261      0              3547.7717    
+       100   314.31961     -44377.324      23955.237      20966.61       3547.7717    
+       200   282.18377     -44368.915      16463.198      21894.134      3547.7717    
+       300   288.51625     -44397.876      12056.649      16183.325      3547.7717    
+       400   295.8455      -44402.076      11294.296      22250.447      3547.7717    
+       500   317.95063     -44380.234      21809.092      17849.334      3547.7717    
+       600   302.23215     -44356.855      20484.641      17698.53       3547.7717    
+       700   317.87771     -44383.845      21759.867      17521.198      3547.7717    
+       800   299.97849     -44381.817      11678.114      19494.635      3547.7717    
+       900   296.29862     -44390.434      7062.8445      12503.338      3547.7717    
+      1000   287.38331     -44397.952      11397.159      15571.443      3547.7717    
+      1100   280.78267     -44403.084      21376.816      16874.642      3547.7717    
+      1200   284.76451     -44373.061      14292.734      22163.698      3547.7717    
+      1300   294.84537     -44360.877      16063.334      22734.596      3547.7717    
+      1400   303.36157     -44364.177      32327.777      19381.955      3547.7717    
+      1500   323.11854     -44384.216      20169.306      17231.7        3547.7717    
+      1600   298.16712     -44381.136      15194.571      17415.851      3547.7717    
+      1700   271.98983     -44373.167      28913.631      18992.979      3547.7717    
+      1800   299.6017      -44394.031      20408.118      20703.799      3547.7717    
+      1900   306.56742     -44364.175      5717.3041      10141.342      3547.7717    
+      2000   295.15605     -44338.244      14909.441      15698.372      3547.7717    
+Loop time of 124.446 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.694 ns/day, 34.568 hours/ns, 16.071 timesteps/s, 5.882 katom-step/s
+99.1% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 71.837     | 98.469     | 105.8      | 105.1 | 79.13
+Bond    | 0.00072224 | 0.00086839 | 0.0010855  |   0.0 |  0.00
+Neigh   | 5.6672     | 7.6629     | 8.3744     |  28.8 |  6.16
+Comm    | 1.679      | 9.027      | 35.663     | 347.3 |  7.25
+Output  | 0.00090574 | 0.001187   | 0.0027926  |   1.8 |  0.00
+Modify  | 8.5392     | 9.2427     | 11.239     |  26.2 |  7.43
+Other   |            | 0.04311    |            |       |  0.03
+
+Nlocal:          45.75 ave          56 max          39 min
+Histogram: 3 0 1 0 1 1 0 0 1 1
+Nghost:        3624.38 ave        3757 max        3499 min
+Histogram: 1 0 1 1 1 1 1 1 0 1
+Neighs:        33138.4 ave       40094 max       28104 min
+Histogram: 3 0 1 0 1 0 1 0 1 1
+
+Total # of neighbors = 265107
+Ave neighs/atom = 724.33607
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+
+# Obtain new stress tensor Negative deformation, convert index from LAMMPS to Voigt
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1neg equal ${d1}
+variable C1neg equal -28.3488671391559
+variable C2neg equal ${d2}
+variable C2neg equal -16.1079184511661
+variable C3neg equal ${d3}
+variable C3neg equal -67.4848985171122
+variable C4neg equal ${d4}
+variable C4neg equal -1.13795250446613
+variable C5neg equal ${d5}
+variable C5neg equal -3.86402002311116
+variable C6neg equal ${d6}
+variable C6neg equal 16.7153158081159
+
+# Reset box and simulation parameters
+clear
+  using 1 OpenMP thread(s) per MPI task
+# box tilt large
+read_restart equil.res
+Reading restart file ...
+  restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
+  restoring atom style full from restart
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  pair style reaxff stores no restart info
+  366 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_restart CPU = 0.003 seconds
+print "*****Positive-change ${dir} starts.*****"
+*****Positive-change 2 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+Resetting global fix info from restart file:
+  fix style: nvt, fix ID: 4
+
+# Positive deformation
+variable delta equal ${up}*${len0}
+variable delta equal 0.01*${len0}
+variable delta equal 0.01*13.535
+variable deltaxy equal ${up}*xy
+variable deltaxy equal 0.01*xy
+variable deltaxz equal ${up}*xz
+variable deltaxz equal 0.01*xz
+variable deltayz equal ${up}*yz
+variable deltayz equal 0.01*yz
+if "${dir} == 1" then    "change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box"
+if "${dir} == 2" then    "change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box"
+change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box
+change_box all y delta 0 0.13535 yz delta ${deltayz} remap units box
+change_box all y delta 0 0.13535 yz delta 0.000807 remap units box
+Changing box ...
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.0372 13.67035 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.0372 13.67035 17.6074) with tilt (-7.4931 -0.1585 0.081507)
+if "${dir} == 3" then    "change_box all z delta 0 ${delta} remap units box"
+if "${dir} == 4" then    "change_box all yz delta ${delta} remap units box"
+if "${dir} == 5" then    "change_box all xz delta ${delta} remap units box"
+if "${dir} == 6" then    "change_box all xy delta ${delta} remap units box"
+
+# Run positive deformation MD
+# save trajectory
+dump dump_pos${dir} all custom ${nthermo} dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos2 all custom ${nthermo} dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos2 all custom 100 dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos2 all custom 100 dump/pos_deform2.lammpstrj id type x y z
+run ${nrun}
+run 2000
+All restart file global fix info was re-assigned
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 134.8 | 138.6 | 142.7 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   288.82459     -44354.17      -23000.864      0              3619.4438    
+       100   308.62723     -44360.458      12789.396      11119.788      3619.4438    
+       200   303.65379     -44358.285      8290.2313      12684.032      3619.4438    
+       300   290.23253     -44365.321      8161.3897      12028.377      3619.4438    
+       400   274.02934     -44383.354      7632.6801      5754.3037      3619.4438    
+       500   281.82331     -44389.892      10006.033      8074.7365      3619.4438    
+       600   282.81589     -44370.003      5694.8039      14283.924      3619.4438    
+       700   311.05265     -44372.026      10345.362      11516.225      3619.4438    
+       800   313.13588     -44363.637      7733.2434      12750.867      3619.4438    
+       900   309.59516     -44361.322     -1377.4444      5652.4416      3619.4438    
+      1000   298.79853     -44376.293      5993.6187      11328.708      3619.4438    
+      1100   278.26709     -44376.091      10130.464      5434.9803      3619.4438    
+      1200   285.86677     -44378.623      17437.19       5303.2109      3619.4438    
+      1300   303.48572     -44382.394      32245.347      15624.397      3619.4438    
+      1400   295.31704     -44366.199      15973.527      14301.315      3619.4438    
+      1500   310.05137     -44378.208      9927.8086      10787.272      3619.4438    
+      1600   311.58379     -44379.97       22565.174      9756.0549      3619.4438    
+      1700   287.85942     -44377.743      13646.596      9836.636       3619.4438    
+      1800   273.21944     -44386.688      9003.7268      12552.179      3619.4438    
+      1900   296.21927     -44402.435      11790.96       8697.925       3619.4438    
+      2000   302.25851     -44381.345      5146.4857      11365.268      3619.4438    
+Loop time of 120.399 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.718 ns/day, 33.444 hours/ns, 16.611 timesteps/s, 6.080 katom-step/s
+99.0% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 92.968     | 97.873     | 102.29     |  32.7 | 81.29
+Bond    | 0.0006701  | 0.0008355  | 0.0010456  |   0.0 |  0.00
+Neigh   | 7.2819     | 7.6324     | 8.0721     |   9.8 |  6.34
+Comm    | 1.4061     | 5.8366     | 10.72      | 134.0 |  4.85
+Output  | 0.0045399  | 0.0075488  | 0.0090285  |   2.0 |  0.01
+Modify  | 8.579      | 9.0065     | 9.376      |   8.9 |  7.48
+Other   |            | 0.04229    |            |       |  0.04
+
+Nlocal:          45.75 ave          56 max          35 min
+Histogram: 1 0 0 2 1 1 1 1 0 1
+Nghost:        3551.25 ave        3688 max        3428 min
+Histogram: 2 0 0 1 2 0 1 0 1 1
+Neighs:          32442 ave       39143 max       25036 min
+Histogram: 1 0 0 2 1 0 1 2 0 1
+
+Total # of neighbors = 259536
+Ave neighs/atom = 709.11475
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+undump dump_pos${dir}
+undump dump_pos2
+
+# Run equilibration
+print "*****Equilibration pos${dir} starts.*****"
+*****Equilibration pos2 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+unfix avgp
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+run ${nequil}
+run 2000
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 134 | 138.5 | 142.7 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   302.25851     -44381.345      5146.4559      0              3619.4438    
+       100   300.36099     -44368.955      8692.9393      11096.842      3619.4438    
+       200   302.35644     -44349.226      7641.0938      11917.673      3619.4438    
+       300   311.6475      -44331.196      4181.6504      4171.9622      3619.4438    
+       400   310.69768     -44344.921      7141.1123      8048.9227      3619.4438    
+       500   294.09157     -44363.118     -2436.6481      1845.0737      3619.4438    
+       600   310.74979     -44388.655      3782.1874      9749.1527      3619.4438    
+       700   288.59287     -44367.843      15299.022      10951.638      3619.4438    
+       800   292.05202     -44365.582      11927.209      12610.243      3619.4438    
+       900   299.15498     -44343.764      6655.5124      12350.014      3619.4438    
+      1000   319.93992     -44355.917      10771.216      13150.689      3619.4438    
+      1100   304.0545      -44364.614      6155.9456      16591.139      3619.4438    
+      1200   309.02657     -44380.809      11219.675      14089.186      3619.4438    
+      1300   300.14632     -44380.223      24593.393      20331.653      3619.4438    
+      1400   286.58316     -44369.161      7981.9771      13665.088      3619.4438    
+      1500   305.20859     -44382.5        10130.765      10792.819      3619.4438    
+      1600   319.63696     -44368.915      10065.068      10747.002      3619.4438    
+      1700   334.813       -44374.855      19521.709      18780.317      3619.4438    
+      1800   290.01344     -44355.331      27045.901      17408.225      3619.4438    
+      1900   292.16629     -44371.625      14992.562      18719.298      3619.4438    
+      2000   282.61474     -44364.883      18924.474      20255.724      3619.4438    
+Loop time of 119.967 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.720 ns/day, 33.324 hours/ns, 16.671 timesteps/s, 6.102 katom-step/s
+99.0% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 74.665     | 94.428     | 102.28     |  85.0 | 78.71
+Bond    | 0.00067118 | 0.00083189 | 0.0010158  |   0.0 |  0.00
+Neigh   | 5.9542     | 7.429      | 7.9679     |  22.6 |  6.19
+Comm    | 1.0421     | 8.9151     | 28.657     | 276.3 |  7.43
+Output  | 0.00092143 | 0.0010035  | 0.001368   |   0.4 |  0.00
+Modify  | 8.6297     | 9.1529     | 10.652     |  20.6 |  7.63
+Other   |            | 0.04048    |            |       |  0.03
+
+Nlocal:          45.75 ave          56 max          37 min
+Histogram: 2 0 2 0 0 1 0 1 1 1
+Nghost:        3547.75 ave        3664 max        3439 min
+Histogram: 2 0 0 2 0 0 1 1 1 1
+Neighs:        32426.6 ave       39120 max       26179 min
+Histogram: 2 0 2 0 0 1 0 0 1 2
+
+Total # of neighbors = 259413
+Ave neighs/atom = 708.77869
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+
+# Obtain new stress tensor, convert index from LAMMPS to Voigt
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure tensor
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1pos equal ${d1}
+variable C1pos equal -17.8285014230149
+variable C2pos equal ${d2}
+variable C2pos equal 41.5729647498636
+variable C3pos equal ${d3}
+variable C3pos equal 32.5410792002264
+variable C4pos equal ${d4}
+variable C4pos equal -15.1172543743689
+variable C5pos equal ${d5}
+variable C5pos equal -10.2859655139593
+variable C6pos equal ${d6}
+variable C6pos equal 7.72822493193124
+
+# Combine positive and negative
+variable C1${dir} equal 0.5*(${C1neg}+${C1pos})
+variable C12 equal 0.5*(${C1neg}+${C1pos})
+variable C12 equal 0.5*(-28.3488671391559+${C1pos})
+variable C12 equal 0.5*(-28.3488671391559+-17.8285014230149)
+variable C2${dir} equal 0.5*(${C2neg}+${C2pos})
+variable C22 equal 0.5*(${C2neg}+${C2pos})
+variable C22 equal 0.5*(-16.1079184511661+${C2pos})
+variable C22 equal 0.5*(-16.1079184511661+41.5729647498636)
+variable C3${dir} equal 0.5*(${C3neg}+${C3pos})
+variable C32 equal 0.5*(${C3neg}+${C3pos})
+variable C32 equal 0.5*(-67.4848985171122+${C3pos})
+variable C32 equal 0.5*(-67.4848985171122+32.5410792002264)
+variable C4${dir} equal 0.5*(${C4neg}+${C4pos})
+variable C42 equal 0.5*(${C4neg}+${C4pos})
+variable C42 equal 0.5*(-1.13795250446613+${C4pos})
+variable C42 equal 0.5*(-1.13795250446613+-15.1172543743689)
+variable C5${dir} equal 0.5*(${C5neg}+${C5pos})
+variable C52 equal 0.5*(${C5neg}+${C5pos})
+variable C52 equal 0.5*(-3.86402002311116+${C5pos})
+variable C52 equal 0.5*(-3.86402002311116+-10.2859655139593)
+variable C6${dir} equal 0.5*(${C6neg}+${C6pos})
+variable C62 equal 0.5*(${C6neg}+${C6pos})
+variable C62 equal 0.5*(16.7153158081159+${C6pos})
+variable C62 equal 0.5*(16.7153158081159+7.72822493193124)
+
+# Delete dir to make sure it is not reused
+variable dir delete
+# uzz Perturbation
+variable dir equal 3
+include displace.mod.lmp
+# Find which reference length to use
+if "${dir} == 1" then    "variable len0 equal ${lx0}"
+if "${dir} == 2" then    "variable len0 equal ${ly0}"
+if "${dir} == 3" then    "variable len0 equal ${lz0}"
+variable len0 equal ${lz0}
+variable len0 equal 17.6074
+if "${dir} == 4" then    "variable len0 equal ${lz0}"
+if "${dir} == 5" then    "variable len0 equal ${lz0}"
+if "${dir} == 6" then    "variable len0 equal ${ly0}"
+
+# Reset box and simulation parameters
+clear
+  using 1 OpenMP thread(s) per MPI task
+# box tilt large
+read_restart equil.res
+Reading restart file ...
+  restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
+  restoring atom style full from restart
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  pair style reaxff stores no restart info
+  366 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_restart CPU = 0.003 seconds
+print "*****Negative-change ${dir} starts.*****"
+*****Negative-change 3 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+Resetting global fix info from restart file:
+  fix style: nvt, fix ID: 4
+
+# Negative deformation
+variable delta equal -${up}*${len0}
+variable delta equal -0.01*${len0}
+variable delta equal -0.01*17.6074
+variable deltaxy equal -${up}*xy
+variable deltaxy equal -0.01*xy
+variable deltaxz equal -${up}*xz
+variable deltaxz equal -0.01*xz
+variable deltayz equal -${up}*yz
+variable deltayz equal -0.01*yz
+if "${dir} == 1" then    "change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box"
+if "${dir} == 2" then    "change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box"
+if "${dir} == 3" then    "change_box all z delta 0 ${delta} remap units box"
+change_box all z delta 0 ${delta} remap units box
+change_box all z delta 0 -0.176074 remap units box
+Changing box ...
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.0372 13.535 17.431326) with tilt (-7.4931 -0.1585 0.0807)
+if "${dir} == 4" then    "change_box all yz delta ${delta} remap units box"
+if "${dir} == 5" then    "change_box all xz delta ${delta} remap units box"
+if "${dir} == 6" then    "change_box all xy delta ${delta} remap units box"
+
+# Run MD for Negative deformation
+# save trajectory
+dump dump_neg${dir} all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg3 all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg3 all custom 100 dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg3 all custom 100 dump/neg_deform3.lammpstrj id type x y z
+run ${nrun}
+run 2000
+All restart file global fix info was re-assigned
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 136.5 | 140.5 | 145 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   288.82459     -44346.725      53870.16       0              3547.7717    
+       100   300.56579     -44343.423      20255.337      22895.347      3547.7717    
+       200   312.0198      -44358.167      16412.261      20778.451      3547.7717    
+       300   296.98386     -44373.934      13522.991      21492.353      3547.7717    
+       400   286.02446     -44376.677      22071.782      18714.083      3547.7717    
+       500   300.52422     -44381.866      17715.339      17105.17       3547.7717    
+       600   300.02063     -44364.797      26191.296      23670.562      3547.7717    
+       700   301.57887     -44351.089      18533.087      23837.595      3547.7717    
+       800   319.23126     -44356.041      15981.835      13071.163      3547.7717    
+       900   327.01563     -44369.112      12249.503      14599.999      3547.7717    
+      1000   298.01218     -44370.176      26256.358      20375.628      3547.7717    
+      1100   291.12762     -44381.361      9378.1748      18275.911      3547.7717    
+      1200   290.80241     -44376.29       10813.92       12588.301      3547.7717    
+      1300   310.36547     -44372.55       20660.09       20075.268      3547.7717    
+      1400   316.65405     -44362.347      23878.209      24959.141      3547.7717    
+      1500   303.44811     -44355.988      14852.713      23358.299      3547.7717    
+      1600   300.22571     -44357.632      11794.823      13488.582      3547.7717    
+      1700   291.69032     -44354.765      23988.489      20113.707      3547.7717    
+      1800   301.91145     -44375.942      15765.668      20659.35       3547.7717    
+      1900   300.62329     -44391.621      14095.144      18132.829      3547.7717    
+      2000   296.83013     -44402.986      13754.262      21521.872      3547.7717    
+Loop time of 123.52 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.699 ns/day, 34.311 hours/ns, 16.192 timesteps/s, 5.926 katom-step/s
+99.1% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 74.832     | 98.883     | 104.98     |  93.1 | 80.05
+Bond    | 0.00072712 | 0.0008515  | 0.0010193  |   0.0 |  0.00
+Neigh   | 5.9424     | 7.6845     | 8.2978     |  24.9 |  6.22
+Comm    | 1.4996     | 7.6156     | 31.646     | 335.3 |  6.17
+Output  | 0.0047004  | 0.0071496  | 0.0084369  |   1.7 |  0.01
+Modify  | 8.6887     | 9.2864     | 11.052     |  22.8 |  7.52
+Other   |            | 0.04221    |            |       |  0.03
+
+Nlocal:          45.75 ave          58 max          36 min
+Histogram: 1 1 1 1 0 2 0 1 0 1
+Nghost:        3607.12 ave        3726 max        3494 min
+Histogram: 1 1 0 1 1 1 1 0 1 1
+Neighs:        33137.5 ave       41360 max       26270 min
+Histogram: 1 1 1 1 0 2 0 1 0 1
+
+Total # of neighbors = 265100
+Ave neighs/atom = 724.31694
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+undump dump_neg${dir}
+undump dump_neg3
+
+# Run equilibration
+print "*****Equilibration neg${dir} starts.*****"
+*****Equilibration neg3 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+unfix avgp
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+run ${nequil}
+run 2000
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 136.5 | 140.5 | 145.1 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   296.83013     -44402.986      13754.296      0              3547.7717    
+       100   301.27945     -44391.847      22140.812      26937.594      3547.7717    
+       200   306.28014     -44368.908      14931.883      17051.858      3547.7717    
+       300   288.34863     -44347.842      26648.463      18979.578      3547.7717    
+       400   307.80557     -44369.226      17051.923      24920.438      3547.7717    
+       500   294.37502     -44364.632      18823.015      19991.774      3547.7717    
+       600   280.89184     -44384.487      23984.192      19690.451      3547.7717    
+       700   289.23698     -44399.901      19820.273      13895.395      3547.7717    
+       800   294.2329      -44385.286      17808.51       19352.725      3547.7717    
+       900   305.57176     -44386.654      18907.666      18485.746      3547.7717    
+      1000   301.92405     -44377.285      18127.736      19613.814      3547.7717    
+      1100   295.82858     -44365.691      22107.247      21556.541      3547.7717    
+      1200   296.98238     -44370.415      28954.613      25377.017      3547.7717    
+      1300   293.58691     -44379.581      19779.773      20510.584      3547.7717    
+      1400   278.83203     -44364.381      4361.4543      19035.486      3547.7717    
+      1500   304.69431     -44366.998      11902.149      14752.309      3547.7717    
+      1600   313.02879     -44355.92       20962.761      23746.431      3547.7717    
+      1700   322.29224     -44371.597      23530.581      21411.217      3547.7717    
+      1800   303.6784      -44369.782      11867.146      15673.253      3547.7717    
+      1900   321.00858     -44398.847      17821.259      23114.751      3547.7717    
+      2000   287.11685     -44367.069      11340.851      17151.955      3547.7717    
+Loop time of 123.664 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.699 ns/day, 34.351 hours/ns, 16.173 timesteps/s, 5.919 katom-step/s
+99.1% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 92.04      | 100.59     | 104.78     |  40.4 | 81.34
+Bond    | 0.00073277 | 0.00085296 | 0.0010326  |   0.0 |  0.00
+Neigh   | 7.3707     | 7.8137     | 8.2259     |  10.6 |  6.32
+Comm    | 1.8674     | 6.0767     | 14.612     | 164.5 |  4.91
+Output  | 0.00094377 | 0.001031   | 0.0014533  |   0.5 |  0.00
+Modify  | 8.7347     | 9.1369     | 9.5954     |   9.6 |  7.39
+Other   |            | 0.04324    |            |       |  0.03
+
+Nlocal:          45.75 ave          57 max          36 min
+Histogram: 1 2 1 0 0 0 2 1 0 1
+Nghost:        3607.75 ave        3698 max        3515 min
+Histogram: 1 0 2 0 1 0 1 1 1 1
+Neighs:        33152.1 ave       40745 max       26339 min
+Histogram: 1 1 2 0 0 0 2 1 0 1
+
+Total # of neighbors = 265217
+Ave neighs/atom = 724.63661
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+
+# Obtain new stress tensor Negative deformation, convert index from LAMMPS to Voigt
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1neg equal ${d1}
+variable C1neg equal -13.6204386265189
+variable C2neg equal ${d2}
+variable C2neg equal -106.938358200692
+variable C3neg equal ${d3}
+variable C3neg equal -56.4118823464076
+variable C4neg equal ${d4}
+variable C4neg equal 23.3433451727395
+variable C5neg equal ${d5}
+variable C5neg equal -14.4823568446185
+variable C6neg equal ${d6}
+variable C6neg equal 0.515149086315404
+
+# Reset box and simulation parameters
+clear
+  using 1 OpenMP thread(s) per MPI task
+# box tilt large
+read_restart equil.res
+Reading restart file ...
+  restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
+  restoring atom style full from restart
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  pair style reaxff stores no restart info
+  366 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_restart CPU = 0.003 seconds
+print "*****Positive-change ${dir} starts.*****"
+*****Positive-change 3 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+Resetting global fix info from restart file:
+  fix style: nvt, fix ID: 4
+
+# Positive deformation
+variable delta equal ${up}*${len0}
+variable delta equal 0.01*${len0}
+variable delta equal 0.01*17.6074
+variable deltaxy equal ${up}*xy
+variable deltaxy equal 0.01*xy
+variable deltaxz equal ${up}*xz
+variable deltaxz equal 0.01*xz
+variable deltayz equal ${up}*yz
+variable deltayz equal 0.01*yz
+if "${dir} == 1" then    "change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box"
+if "${dir} == 2" then    "change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box"
+if "${dir} == 3" then    "change_box all z delta 0 ${delta} remap units box"
+change_box all z delta 0 ${delta} remap units box
+change_box all z delta 0 0.176074 remap units box
+Changing box ...
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.0372 13.535 17.783474) with tilt (-7.4931 -0.1585 0.0807)
+if "${dir} == 4" then    "change_box all yz delta ${delta} remap units box"
+if "${dir} == 5" then    "change_box all xz delta ${delta} remap units box"
+if "${dir} == 6" then    "change_box all xy delta ${delta} remap units box"
+
+# Run positive deformation MD
+# save trajectory
+dump dump_pos${dir} all custom ${nthermo} dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos3 all custom ${nthermo} dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos3 all custom 100 dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos3 all custom 100 dump/pos_deform3.lammpstrj id type x y z
+run ${nrun}
+run 2000
+All restart file global fix info was re-assigned
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 133.5 | 138.5 | 142.9 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   288.82459     -44355.518     -21397.532      0              3619.4438    
+       100   301.6614      -44355.158      13583.496      8801.4655      3619.4438    
+       200   300.87923     -44361.565      12138.235      12997.451      3619.4438    
+       300   283.68718     -44365.057      14690.57       8834.9594      3619.4438    
+       400   293.02165     -44401.754      7515.1399      11492.277      3619.4438    
+       500   270.25559     -44413.36       7530.0234      6364.6942      3619.4438    
+       600   283.86497     -44404.685      8525.5496      10345.125      3619.4438    
+       700   303.07631     -44397.1        9094.0779      10681.445      3619.4438    
+       800   310.29435     -44384.904      7694.1011      10704.851      3619.4438    
+       900   315.23785     -44378.583      11160.662      8100.8432      3619.4438    
+      1000   296.74248     -44364.71       15221.555      5485.8074      3619.4438    
+      1100   298.51888     -44401.921     -8645.6296      2206.9425      3619.4438    
+      1200   282.72385     -44386.606      4978.5493      3608.3491      3619.4438    
+      1300   313.56006     -44405.363      13878.941      10742.028      3619.4438    
+      1400   294.86077     -44376.506      3648.7081      15153.721      3619.4438    
+      1500   304.7823      -44383.146      9399.092       9723.2565      3619.4438    
+      1600   315.80955     -44392.631      5212.5488      6606.7534      3619.4438    
+      1700   289.01936     -44371.063      5698.4146      12668.314      3619.4438    
+      1800   303.05148     -44391.743      19962.023      9403.3915      3619.4438    
+      1900   296.33967     -44387.723      11816.597      11300.585      3619.4438    
+      2000   304.61059     -44381.766      8735.2613      11644.609      3619.4438    
+Loop time of 120.321 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.718 ns/day, 33.423 hours/ns, 16.622 timesteps/s, 6.084 katom-step/s
+99.1% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 68.714     | 95.131     | 102.24     | 106.9 | 79.06
+Bond    | 0.00076345 | 0.00086913 | 0.0010704  |   0.0 |  0.00
+Neigh   | 5.5096     | 7.4791     | 8.0684     |  28.8 |  6.22
+Comm    | 1.5038     | 8.6345     | 35.05      | 355.1 |  7.18
+Output  | 0.0051265  | 0.0085547  | 0.0102     |   2.1 |  0.01
+Modify  | 8.4341     | 9.0248     | 11.002     |  26.2 |  7.50
+Other   |            | 0.04237    |            |       |  0.04
+
+Nlocal:          45.75 ave          54 max          36 min
+Histogram: 1 0 1 1 1 0 1 0 2 1
+Nghost:         3553.5 ave        3657 max        3450 min
+Histogram: 2 0 0 1 1 1 0 1 1 1
+Neighs:        32471.6 ave       37907 max       25698 min
+Histogram: 1 0 1 1 1 0 1 0 2 1
+
+Total # of neighbors = 259773
+Ave neighs/atom = 709.7623
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+undump dump_pos${dir}
+undump dump_pos3
+
+# Run equilibration
+print "*****Equilibration pos${dir} starts.*****"
+*****Equilibration pos3 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+unfix avgp
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+run ${nequil}
+run 2000
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 134.2 | 138.6 | 142.9 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   304.61059     -44381.766      8735.1699      0              3619.4438    
+       100   288.9081      -44369.044      9939.8835      9820.2155      3619.4438    
+       200   303.61373     -44397.637      4886.3915      6050.2138      3619.4438    
+       300   269.70612     -44379.914      8441.2091      12133.97       3619.4438    
+       400   279.75612     -44381.989      16948.389      11729.997      3619.4438    
+       500   317.89263     -44389.714      4158.1278      11142.168      3619.4438    
+       600   303.4342      -44364.674      8879.2368      19344.321      3619.4438    
+       700   322.91409     -44394.656      6733.3657      13207.665      3619.4438    
+       800   285.65704     -44377.051      8751.2404      11520.071      3619.4438    
+       900   287.87343     -44386.604      9841.9962      14250.169      3619.4438    
+      1000   314.1751      -44385.17      -2611.6209      13398.463      3619.4438    
+      1100   305.33379     -44349.203      252.87181      10104.639      3619.4438    
+      1200   309.97922     -44364.69       2958.4825      6678.0705      3619.4438    
+      1300   305.76227     -44394.595      12152.879      10658.887      3619.4438    
+      1400   309.30251     -44405.892      26596.152      20794.165      3619.4438    
+      1500   290.99531     -44385.815      28880.247      13926.504      3619.4438    
+      1600   314.22377     -44402.663     -708.02437      8650.7183      3619.4438    
+      1700   308.29554     -44372.045      17201.75       16440.268      3619.4438    
+      1800   312.00512     -44361.335      5443.8137      13906.095      3619.4438    
+      1900   291.28383     -44367.224      1811.8038      7610.9819      3619.4438    
+      2000   300.67091     -44396.526      15100.041      14445.293      3619.4438    
+Loop time of 121.013 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.714 ns/day, 33.615 hours/ns, 16.527 timesteps/s, 6.049 katom-step/s
+99.1% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 70.082     | 93.684     | 103.18     | 110.2 | 77.42
+Bond    | 0.00074816 | 0.00085465 | 0.0010751  |   0.0 |  0.00
+Neigh   | 5.6213     | 7.4022     | 8.1776     |  30.3 |  6.12
+Comm    | 1.0621     | 10.581     | 34.197     | 328.0 |  8.74
+Output  | 0.00091997 | 0.0011036  | 0.0021638  |   1.2 |  0.00
+Modify  | 8.5435     | 9.3009     | 11.073     |  26.9 |  7.69
+Other   |            | 0.04236    |            |       |  0.04
+
+Nlocal:          45.75 ave          58 max          38 min
+Histogram: 2 2 0 0 1 1 0 0 1 1
+Nghost:           3583 ave        3708 max        3464 min
+Histogram: 1 1 0 1 1 1 1 0 1 1
+Neighs:        32461.2 ave       40637 max       26919 min
+Histogram: 2 2 0 0 1 1 0 0 1 1
+
+Total # of neighbors = 259690
+Ave neighs/atom = 709.53552
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+
+# Obtain new stress tensor, convert index from LAMMPS to Voigt
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure tensor
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1pos equal ${d1}
+variable C1pos equal 41.0456894534998
+variable C2pos equal ${d2}
+variable C2pos equal 59.0268911393522
+variable C3pos equal ${d3}
+variable C3pos equal 122.38510372711
+variable C4pos equal ${d4}
+variable C4pos equal 18.9969012657331
+variable C5pos equal ${d5}
+variable C5pos equal 6.78880652070297
+variable C6pos equal ${d6}
+variable C6pos equal -7.54963158926963
+
+# Combine positive and negative
+variable C1${dir} equal 0.5*(${C1neg}+${C1pos})
+variable C13 equal 0.5*(${C1neg}+${C1pos})
+variable C13 equal 0.5*(-13.6204386265189+${C1pos})
+variable C13 equal 0.5*(-13.6204386265189+41.0456894534998)
+variable C2${dir} equal 0.5*(${C2neg}+${C2pos})
+variable C23 equal 0.5*(${C2neg}+${C2pos})
+variable C23 equal 0.5*(-106.938358200692+${C2pos})
+variable C23 equal 0.5*(-106.938358200692+59.0268911393522)
+variable C3${dir} equal 0.5*(${C3neg}+${C3pos})
+variable C33 equal 0.5*(${C3neg}+${C3pos})
+variable C33 equal 0.5*(-56.4118823464076+${C3pos})
+variable C33 equal 0.5*(-56.4118823464076+122.38510372711)
+variable C4${dir} equal 0.5*(${C4neg}+${C4pos})
+variable C43 equal 0.5*(${C4neg}+${C4pos})
+variable C43 equal 0.5*(23.3433451727395+${C4pos})
+variable C43 equal 0.5*(23.3433451727395+18.9969012657331)
+variable C5${dir} equal 0.5*(${C5neg}+${C5pos})
+variable C53 equal 0.5*(${C5neg}+${C5pos})
+variable C53 equal 0.5*(-14.4823568446185+${C5pos})
+variable C53 equal 0.5*(-14.4823568446185+6.78880652070297)
+variable C6${dir} equal 0.5*(${C6neg}+${C6pos})
+variable C63 equal 0.5*(${C6neg}+${C6pos})
+variable C63 equal 0.5*(0.515149086315404+${C6pos})
+variable C63 equal 0.5*(0.515149086315404+-7.54963158926963)
+
+# Delete dir to make sure it is not reused
+variable dir delete
+# uyz Perturbation
+variable dir equal 4
+include displace.mod.lmp
+# Find which reference length to use
+if "${dir} == 1" then    "variable len0 equal ${lx0}"
+if "${dir} == 2" then    "variable len0 equal ${ly0}"
+if "${dir} == 3" then    "variable len0 equal ${lz0}"
+if "${dir} == 4" then    "variable len0 equal ${lz0}"
+variable len0 equal ${lz0}
+variable len0 equal 17.6074
+if "${dir} == 5" then    "variable len0 equal ${lz0}"
+if "${dir} == 6" then    "variable len0 equal ${ly0}"
+
+# Reset box and simulation parameters
+clear
+  using 1 OpenMP thread(s) per MPI task
+# box tilt large
+read_restart equil.res
+Reading restart file ...
+  restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
+  restoring atom style full from restart
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  pair style reaxff stores no restart info
+  366 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_restart CPU = 0.003 seconds
+print "*****Negative-change ${dir} starts.*****"
+*****Negative-change 4 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+Resetting global fix info from restart file:
+  fix style: nvt, fix ID: 4
+
+# Negative deformation
+variable delta equal -${up}*${len0}
+variable delta equal -0.01*${len0}
+variable delta equal -0.01*17.6074
+variable deltaxy equal -${up}*xy
+variable deltaxy equal -0.01*xy
+variable deltaxz equal -${up}*xz
+variable deltaxz equal -0.01*xz
+variable deltayz equal -${up}*yz
+variable deltayz equal -0.01*yz
+if "${dir} == 1" then    "change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box"
+if "${dir} == 2" then    "change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box"
+if "${dir} == 3" then    "change_box all z delta 0 ${delta} remap units box"
+if "${dir} == 4" then    "change_box all yz delta ${delta} remap units box"
+change_box all yz delta ${delta} remap units box
+change_box all yz delta -0.176074 remap units box
+Changing box ...
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 -0.095374)
+if "${dir} == 5" then    "change_box all xz delta ${delta} remap units box"
+if "${dir} == 6" then    "change_box all xy delta ${delta} remap units box"
+
+# Run MD for Negative deformation
+# save trajectory
+dump dump_neg${dir} all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg4 all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg4 all custom 100 dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg4 all custom 100 dump/neg_deform4.lammpstrj id type x y z
+run ${nrun}
+run 2000
+All restart file global fix info was re-assigned
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.4 | 139.6 | 144.5 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   288.82459     -44362.481      16968.838      0              3583.6077    
+       100   302.98118     -44359.975      19147.397      16284.707      3583.6077    
+       200   306.63057     -44360.729      10359.901      18999.482      3583.6077    
+       300   292.23745     -44359.075      19728.661      16445.817      3583.6077    
+       400   293.65232     -44397.852      17773.336      13377.605      3583.6077    
+       500   276.3236      -44384.947      12299.941      14593.557      3583.6077    
+       600   293.30038     -44386.85       14479.626      20541.817      3583.6077    
+       700   299.19622     -44378.063      7419.8855      14572.9        3583.6077    
+       800   315.485       -44388.728      7052.975       14605.697      3583.6077    
+       900   295.84904     -44378.174      10275.655      15238.351      3583.6077    
+      1000   292.0707      -44400.863      12062.347      18378.16       3583.6077    
+      1100   284.38148     -44389.948      12558.861      11589.985      3583.6077    
+      1200   285.22693     -44355.682      12775.653      14907.506      3583.6077    
+      1300   319.81525     -44384.955      22410.776      16026.252      3583.6077    
+      1400   295.96595     -44374.118      22399.878      24749.109      3583.6077    
+      1500   297.55392     -44391.581      5659.2643      16290.54       3583.6077    
+      1600   278.97601     -44378.426      10661.829      11779.013      3583.6077    
+      1700   291.80678     -44386.505      19127.427      20328.929      3583.6077    
+      1800   308.10821     -44386.808      14887.901      15945.935      3583.6077    
+      1900   295.72917     -44355.515      24337.764      16457.867      3583.6077    
+      2000   305.59616     -44363.089      8435.3059      17520.476      3583.6077    
+Loop time of 122.469 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.705 ns/day, 34.019 hours/ns, 16.331 timesteps/s, 5.977 katom-step/s
+99.1% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 85.622     | 97.305     | 104.67     |  68.7 | 79.45
+Bond    | 0.00070799 | 0.00083595 | 0.0010545  |   0.0 |  0.00
+Neigh   | 6.857      | 7.6282     | 8.2676     |  17.6 |  6.23
+Comm    | 0.80787    | 8.2032     | 19.88      | 236.5 |  6.70
+Output  | 0.0050029  | 0.0078395  | 0.0092754  |   1.9 |  0.01
+Modify  | 8.6662     | 9.2808     | 10.062     |  15.9 |  7.58
+Other   |            | 0.04338    |            |       |  0.04
+
+Nlocal:          45.75 ave          58 max          38 min
+Histogram: 2 2 0 0 1 1 0 0 1 1
+Nghost:        3603.38 ave        3749 max        3472 min
+Histogram: 1 1 0 1 2 1 0 0 1 1
+Neighs:        32794.4 ave       40949 max       27450 min
+Histogram: 3 1 0 0 1 1 0 0 1 1
+
+Total # of neighbors = 262355
+Ave neighs/atom = 716.81694
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+undump dump_neg${dir}
+undump dump_neg4
+
+# Run equilibration
+print "*****Equilibration neg${dir} starts.*****"
+*****Equilibration neg4 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+unfix avgp
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+run ${nequil}
+run 2000
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.4 | 139.7 | 144.5 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   305.59616     -44363.089      8435.4085      0              3583.6077    
+       100   315.48656     -44379.077      5996.9019      12403.269      3583.6077    
+       200   312.03047     -44413.385      19266.37       16555.333      3583.6077    
+       300   276.43967     -44384.252      12809.64       19403.534      3583.6077    
+       400   299.15633     -44391.068      15297.954      18714.436      3583.6077    
+       500   313.07736     -44387.527      20673.069      16446.523      3583.6077    
+       600   311.77402     -44385.556      2887.0978      14518.959      3583.6077    
+       700   316.20588     -44400.449      15775.543      12605.924      3583.6077    
+       800   287.2504      -44402.976      3642.3362      5628.1444      3583.6077    
+       900   296.72376     -44410.074      12456.208      14380.401      3583.6077    
+      1000   297.18339     -44383.028      17161.262      15934.233      3583.6077    
+      1100   305.02977     -44379.755      3839.809       15702.121      3583.6077    
+      1200   302.52377     -44374.751      2059.4143      11046.231      3583.6077    
+      1300   311.14542     -44382.405      9546.3936      18105.951      3583.6077    
+      1400   303.99926     -44391.218      6896.4847      13862.738      3583.6077    
+      1500   309.39994     -44419.861      17537.112      14574.373      3583.6077    
+      1600   279.36167     -44398.894      8829.4299      20123.918      3583.6077    
+      1700   291.65426     -44390.644      23045.776      18432.005      3583.6077    
+      1800   287.08456     -44360.678      8901.3097      13421.506      3583.6077    
+      1900   300.37866     -44374.84       4275.057       16670.717      3583.6077    
+      2000   303.24033     -44386.311      17713.615      15640.221      3583.6077    
+Loop time of 117.947 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.733 ns/day, 32.763 hours/ns, 16.957 timesteps/s, 6.206 katom-step/s
+99.2% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 69.578     | 86.826     | 100.03     | 120.7 | 73.61
+Bond    | 0.00066863 | 0.00078806 | 0.00095163 |   0.0 |  0.00
+Neigh   | 5.8171     | 7.1142     | 8.3191     |  34.1 |  6.03
+Comm    | 1.1416     | 14.375     | 31.611     | 296.6 | 12.19
+Output  | 0.00087012 | 0.00095382 | 0.0013223  |   0.0 |  0.00
+Modify  | 8.3952     | 9.5898     | 10.903     |  29.3 |  8.13
+Other   |            | 0.03979    |            |       |  0.03
+
+Nlocal:          45.75 ave          56 max          35 min
+Histogram: 1 1 1 1 0 0 0 2 1 1
+Nghost:        3606.62 ave        3698 max        3512 min
+Histogram: 2 0 0 1 1 0 2 0 0 2
+Neighs:        32801.4 ave       39630 max       25295 min
+Histogram: 1 1 1 1 0 0 0 2 1 1
+
+Total # of neighbors = 262411
+Ave neighs/atom = 716.96995
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+
+# Obtain new stress tensor Negative deformation, convert index from LAMMPS to Voigt
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1neg equal ${d1}
+variable C1neg equal -28.9380837385588
+variable C2neg equal ${d2}
+variable C2neg equal -68.0053351927568
+variable C3neg equal ${d3}
+variable C3neg equal -75.0306070610327
+variable C4neg equal ${d4}
+variable C4neg equal -7.880097985123
+variable C5neg equal ${d5}
+variable C5neg equal -21.3094760445433
+variable C6neg equal ${d6}
+variable C6neg equal 12.1627574063429
+
+# Reset box and simulation parameters
+clear
+  using 1 OpenMP thread(s) per MPI task
+# box tilt large
+read_restart equil.res
+Reading restart file ...
+  restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
+  restoring atom style full from restart
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  pair style reaxff stores no restart info
+  366 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_restart CPU = 0.002 seconds
+print "*****Positive-change ${dir} starts.*****"
+*****Positive-change 4 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+Resetting global fix info from restart file:
+  fix style: nvt, fix ID: 4
+
+# Positive deformation
+variable delta equal ${up}*${len0}
+variable delta equal 0.01*${len0}
+variable delta equal 0.01*17.6074
+variable deltaxy equal ${up}*xy
+variable deltaxy equal 0.01*xy
+variable deltaxz equal ${up}*xz
+variable deltaxz equal 0.01*xz
+variable deltayz equal ${up}*yz
+variable deltayz equal 0.01*yz
+if "${dir} == 1" then    "change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box"
+if "${dir} == 2" then    "change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box"
+if "${dir} == 3" then    "change_box all z delta 0 ${delta} remap units box"
+if "${dir} == 4" then    "change_box all yz delta ${delta} remap units box"
+change_box all yz delta ${delta} remap units box
+change_box all yz delta 0.176074 remap units box
+Changing box ...
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.256774)
+if "${dir} == 5" then    "change_box all xz delta ${delta} remap units box"
+if "${dir} == 6" then    "change_box all xy delta ${delta} remap units box"
+
+# Run positive deformation MD
+# save trajectory
+dump dump_pos${dir} all custom ${nthermo} dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos4 all custom ${nthermo} dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos4 all custom 100 dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos4 all custom 100 dump/pos_deform4.lammpstrj id type x y z
+run ${nrun}
+run 2000
+All restart file global fix info was re-assigned
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.4 | 139.6 | 144.5 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   288.82459     -44359.325      16054.277      0              3583.6077    
+       100   299.33806     -44353.911      13886.821      15367.516      3583.6077    
+       200   304.53689     -44358.265      14112.205      17919.105      3583.6077    
+       300   298.70271     -44371.816      18495.428      14517.628      3583.6077    
+       400   282.38935     -44390.832      11914.153      15702.007      3583.6077    
+       500   279.53229     -44391.892      17960.679      16072.132      3583.6077    
+       600   306.44612     -44407.472      19182.877      16160.939      3583.6077    
+       700   300.89842     -44381.222      8411.612       12099.086      3583.6077    
+       800   298.49051     -44359.752      23162.81       14459.595      3583.6077    
+       900   309.13474     -44365.735      25535.272      18469.12       3583.6077    
+      1000   306.78503     -44383.588      9733.5482      16090.201      3583.6077    
+      1100   290.17605     -44398.039      8684.4769      10347.986      3583.6077    
+      1200   297.5052      -44392.603      11011.346      12444.598      3583.6077    
+      1300   288.46571     -44362.392      14935.754      14311.725      3583.6077    
+      1400   291.89557     -44351.58       19187.634      19086.304      3583.6077    
+      1500   296.12        -44355.573      19551.294      19592.736      3583.6077    
+      1600   313.2625      -44383.958      14240.526      16228.813      3583.6077    
+      1700   298.10477     -44374.082      12983.096      18580.398      3583.6077    
+      1800   296.43225     -44366.541     -830.53913      12757.541      3583.6077    
+      1900   289.77796     -44351.339      15121.125      20517.67       3583.6077    
+      2000   297.08224     -44339.329      6946.0028      14881.967      3583.6077    
+Loop time of 107.835 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 0.801 ns/day, 29.954 hours/ns, 18.547 timesteps/s, 6.788 katom-step/s
+99.1% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 63.206     | 73.753     | 90.808     | 115.2 | 68.39
+Bond    | 0.00058105 | 0.00066926 | 0.00075714 |   0.0 |  0.00
+Neigh   | 5.5816     | 6.5072     | 8.1174     |  33.5 |  6.03
+Comm    | 1.1246     | 18.197     | 28.757     | 232.0 | 16.87
+Output  | 0.0038484  | 0.006231   | 0.0074538  |   1.8 |  0.01
+Modify  | 7.736      | 9.3345     | 10.25      |  27.9 |  8.66
+Other   |            | 0.03695    |            |       |  0.03
+
+Nlocal:          45.75 ave          58 max          37 min
+Histogram: 2 0 2 0 1 1 1 0 0 1
+Nghost:        3604.12 ave        3727 max        3500 min
+Histogram: 1 1 1 1 1 0 0 2 0 1
+Neighs:        32819.5 ave       41046 max       26665 min
+Histogram: 2 0 1 1 0 2 1 0 0 1
+
+Total # of neighbors = 262556
+Ave neighs/atom = 717.36612
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+undump dump_pos${dir}
+undump dump_pos4
+
+# Run equilibration
+print "*****Equilibration pos${dir} starts.*****"
+*****Equilibration pos4 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+unfix avgp
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+run ${nequil}
+run 2000
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.4 | 139.6 | 144.5 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   297.08224     -44339.329      6946.123       0              3583.6077    
+       100   297.27781     -44347.53       13109.769      16263.457      3583.6077    
+       200   283.03724     -44368.178      18275.927      21384.34       3583.6077    
+       300   280.42595     -44368.209      3249.6642      14500.22       3583.6077    
+       400   292.83824     -44369.573      9907.118       10873.792      3583.6077    
+       500   308.90735     -44370.634      13442.018      15779.432      3583.6077    
+       600   307.51168     -44363.879      14237.23       20287.561      3583.6077    
+       700   298.30399     -44361.816      10530.21       15677.003      3583.6077    
+       800   292.17378     -44360.389      17172.563      13357.402      3583.6077    
+       900   286.56404     -44358.268      4794.795       14155.208      3583.6077    
+      1000   305.46825     -44377.833      1628.047       12321          3583.6077    
+      1100   315.58866     -44387.962      17722.166      15909.999      3583.6077    
+      1200   303.38548     -44379.235      14769.316      15693.161      3583.6077    
+      1300   278.47936     -44364.971     -2353.5556      15499.733      3583.6077    
+      1400   307.21019     -44403.165      11941.207      17158.28       3583.6077    
+      1500   293.25399     -44377.492      16837.626      23373.846      3583.6077    
+      1600   305.0217      -44355.777      7563.2079      14226.659      3583.6077    
+      1700   326.73925     -44376.022      6183.964       19299.839      3583.6077    
+      1800   318.45313     -44392.984      12954.047      14441.24       3583.6077    
+      1900   302.7335      -44389.745      12089.975      14037.157      3583.6077    
+      2000   312.71468     -44403.352      11387.323      12089.397      3583.6077    
+Loop time of 76.5653 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 1.128 ns/day, 21.268 hours/ns, 26.121 timesteps/s, 9.560 katom-step/s
+98.9% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 60.92      | 62.17      | 63.662     |  14.9 | 81.20
+Bond    | 0.00052052 | 0.00063629 | 0.00076498 |   0.0 |  0.00
+Neigh   | 5.4302     | 5.7015     | 5.9142     |   7.7 |  7.45
+Comm    | 0.66816    | 2.1749     | 3.4402     |  80.4 |  2.84
+Output  | 0.00089598 | 0.00097405 | 0.0012613  |   0.0 |  0.00
+Modify  | 6.2619     | 6.4798     | 6.7415     |   7.0 |  8.46
+Other   |            | 0.03795    |            |       |  0.05
+
+Nlocal:          45.75 ave          53 max          35 min
+Histogram: 1 0 1 0 0 2 0 0 3 1
+Nghost:        3566.38 ave        3652 max        3479 min
+Histogram: 2 0 1 1 0 0 1 0 2 1
+Neighs:        32798.8 ave       37633 max       25318 min
+Histogram: 1 0 1 0 1 1 0 0 3 1
+
+Total # of neighbors = 262390
+Ave neighs/atom = 716.91257
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+
+# Obtain new stress tensor, convert index from LAMMPS to Voigt
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure tensor
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1pos equal ${d1}
+variable C1pos equal 64.9168090749749
+variable C2pos equal ${d2}
+variable C2pos equal 122.269467154433
+variable C3pos equal ${d3}
+variable C3pos equal 138.562968807812
+variable C4pos equal ${d4}
+variable C4pos equal 12.6645922298913
+variable C5pos equal ${d5}
+variable C5pos equal 25.463760295311
+variable C6pos equal ${d6}
+variable C6pos equal -0.453696615805903
+
+# Combine positive and negative
+variable C1${dir} equal 0.5*(${C1neg}+${C1pos})
+variable C14 equal 0.5*(${C1neg}+${C1pos})
+variable C14 equal 0.5*(-28.9380837385588+${C1pos})
+variable C14 equal 0.5*(-28.9380837385588+64.9168090749749)
+variable C2${dir} equal 0.5*(${C2neg}+${C2pos})
+variable C24 equal 0.5*(${C2neg}+${C2pos})
+variable C24 equal 0.5*(-68.0053351927568+${C2pos})
+variable C24 equal 0.5*(-68.0053351927568+122.269467154433)
+variable C3${dir} equal 0.5*(${C3neg}+${C3pos})
+variable C34 equal 0.5*(${C3neg}+${C3pos})
+variable C34 equal 0.5*(-75.0306070610327+${C3pos})
+variable C34 equal 0.5*(-75.0306070610327+138.562968807812)
+variable C4${dir} equal 0.5*(${C4neg}+${C4pos})
+variable C44 equal 0.5*(${C4neg}+${C4pos})
+variable C44 equal 0.5*(-7.880097985123+${C4pos})
+variable C44 equal 0.5*(-7.880097985123+12.6645922298913)
+variable C5${dir} equal 0.5*(${C5neg}+${C5pos})
+variable C54 equal 0.5*(${C5neg}+${C5pos})
+variable C54 equal 0.5*(-21.3094760445433+${C5pos})
+variable C54 equal 0.5*(-21.3094760445433+25.463760295311)
+variable C6${dir} equal 0.5*(${C6neg}+${C6pos})
+variable C64 equal 0.5*(${C6neg}+${C6pos})
+variable C64 equal 0.5*(12.1627574063429+${C6pos})
+variable C64 equal 0.5*(12.1627574063429+-0.453696615805903)
+
+# Delete dir to make sure it is not reused
+variable dir delete
+# uxz Perturbation
+variable dir equal 5
+include displace.mod.lmp
+# Find which reference length to use
+if "${dir} == 1" then    "variable len0 equal ${lx0}"
+if "${dir} == 2" then    "variable len0 equal ${ly0}"
+if "${dir} == 3" then    "variable len0 equal ${lz0}"
+if "${dir} == 4" then    "variable len0 equal ${lz0}"
+if "${dir} == 5" then    "variable len0 equal ${lz0}"
+variable len0 equal ${lz0}
+variable len0 equal 17.6074
+if "${dir} == 6" then    "variable len0 equal ${ly0}"
+
+# Reset box and simulation parameters
+clear
+  using 1 OpenMP thread(s) per MPI task
+# box tilt large
+read_restart equil.res
+Reading restart file ...
+  restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
+  restoring atom style full from restart
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  pair style reaxff stores no restart info
+  366 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_restart CPU = 0.002 seconds
+print "*****Negative-change ${dir} starts.*****"
+*****Negative-change 5 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+Resetting global fix info from restart file:
+  fix style: nvt, fix ID: 4
+
+# Negative deformation
+variable delta equal -${up}*${len0}
+variable delta equal -0.01*${len0}
+variable delta equal -0.01*17.6074
+variable deltaxy equal -${up}*xy
+variable deltaxy equal -0.01*xy
+variable deltaxz equal -${up}*xz
+variable deltaxz equal -0.01*xz
+variable deltayz equal -${up}*yz
+variable deltayz equal -0.01*yz
+if "${dir} == 1" then    "change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box"
+if "${dir} == 2" then    "change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box"
+if "${dir} == 3" then    "change_box all z delta 0 ${delta} remap units box"
+if "${dir} == 4" then    "change_box all yz delta ${delta} remap units box"
+if "${dir} == 5" then    "change_box all xz delta ${delta} remap units box"
+change_box all xz delta ${delta} remap units box
+change_box all xz delta -0.176074 remap units box
+Changing box ...
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.334574 0.0807)
+if "${dir} == 6" then    "change_box all xy delta ${delta} remap units box"
+
+# Run MD for Negative deformation
+# save trajectory
+dump dump_neg${dir} all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg5 all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg5 all custom 100 dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg5 all custom 100 dump/neg_deform5.lammpstrj id type x y z
+run ${nrun}
+run 2000
+All restart file global fix info was re-assigned
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.4 | 139.6 | 144.6 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   288.82459     -44359.99       14313.572      0              3583.6077    
+       100   301.14849     -44355.647      15565.632      15568.88       3583.6077    
+       200   300.41306     -44352.149      12917.179      19867.004      3583.6077    
+       300   294.24598     -44362.766      29886.358      16600.102      3583.6077    
+       400   276.9812      -44379.938      18684.638      15768.28       3583.6077    
+       500   274.47255     -44389.928      22811.294      15585.223      3583.6077    
+       600   281.94917     -44382.926      20011.83       17487.299      3583.6077    
+       700   287.79123     -44371.858      8732.3559      14212.883      3583.6077    
+       800   303.50163     -44370.311      14776.832      14063.865      3583.6077    
+       900   310.70423     -44367.569      11022.714      16200.256      3583.6077    
+      1000   310.59316     -44383.75       8562.8761      15325.622      3583.6077    
+      1100   286.62218     -44391.821      157.99588      9576.2235      3583.6077    
+      1200   293.98173     -44394.775      5698.4194      12038.552      3583.6077    
+      1300   295.34684     -44373.352      16007.545      20667.929      3583.6077    
+      1400   304.12846     -44367.635      11619.32       23781.868      3583.6077    
+      1500   309.25012     -44372.476      4269.0037      14571.907      3583.6077    
+      1600   312.51864     -44382.058      10239.431      13223.767      3583.6077    
+      1700   290.35174     -44383.942      9371.4138      17346.697      3583.6077    
+      1800   276.53075     -44391.167      9240.2438      13127.826      3583.6077    
+      1900   292.85326     -44390.012      6088.7984      16892.381      3583.6077    
+      2000   314.45582     -44383.627      17736.658      14401.131      3583.6077    
+Loop time of 73.9754 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 1.168 ns/day, 20.549 hours/ns, 27.036 timesteps/s, 9.895 katom-step/s
+98.8% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 58.375     | 59.639     | 61.224     |  15.7 | 80.62
+Bond    | 0.00059287 | 0.00064235 | 0.00075893 |   0.0 |  0.00
+Neigh   | 5.41       | 5.6373     | 5.8672     |   6.5 |  7.62
+Comm    | 0.62198    | 2.2218     | 3.4962     |  82.1 |  3.00
+Output  | 0.0034154  | 0.0058452  | 0.0069994  |   1.9 |  0.01
+Modify  | 6.215      | 6.4337     | 6.6513     |   5.7 |  8.70
+Other   |            | 0.0369     |            |       |  0.05
+
+Nlocal:          45.75 ave          53 max          36 min
+Histogram: 1 1 0 1 1 0 0 1 1 2
+Nghost:        3592.88 ave        3681 max        3500 min
+Histogram: 2 0 0 1 1 1 0 1 1 1
+Neighs:        32803.9 ave       38095 max       26015 min
+Histogram: 1 1 0 2 0 0 0 1 1 2
+
+Total # of neighbors = 262431
+Ave neighs/atom = 717.02459
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+undump dump_neg${dir}
+undump dump_neg5
+
+# Run equilibration
+print "*****Equilibration neg${dir} starts.*****"
+*****Equilibration neg5 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+unfix avgp
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+run ${nequil}
+run 2000
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.4 | 139.5 | 143.8 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   314.45582     -44383.627      17736.557      0              3583.6077    
+       100   310.66308     -44379.131      11700.572      22470.816      3583.6077    
+       200   311.22845     -44372.843      9164.1953      13052.791      3583.6077    
+       300   293.08868     -44353.518      18891.875      11569.342      3583.6077    
+       400   314.00569     -44388.307      16375.775      13011.022      3583.6077    
+       500   299.32325     -44390.064      3244.2926      8086.2064      3583.6077    
+       600   277.05097     -44377.323      13237.467      16856.274      3583.6077    
+       700   291.75569     -44376.06       20240.764      19956.794      3583.6077    
+       800   323.3261      -44378.446      18600.998      20088.212      3583.6077    
+       900   299.30943     -44349.586      14563.524      16179.744      3583.6077    
+      1000   292.15896     -44356.982      12451.033      13544.147      3583.6077    
+      1100   295.57802     -44383.957      12715.63       15658.383      3583.6077    
+      1200   284.45941     -44401.879      15655.055      18750.863      3583.6077    
+      1300   296.97919     -44417.062      21021.039      12498.786      3583.6077    
+      1400   298.34118     -44368.169      17085.155      15922.156      3583.6077    
+      1500   311.76844     -44373.182      18529.031      20362.784      3583.6077    
+      1600   306.34778     -44384.002      17941.434      15295.916      3583.6077    
+      1700   294.21241     -44396.073      6061.649       15735.725      3583.6077    
+      1800   291.29202     -44393.406      19950.083      11863          3583.6077    
+      1900   298.14925     -44393.426      13239.638      19225.371      3583.6077    
+      2000   313.83407     -44381.181      12081.686      16050.792      3583.6077    
+Loop time of 70.7183 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 1.222 ns/day, 19.644 hours/ns, 28.281 timesteps/s, 10.351 katom-step/s
+98.8% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 55.066     | 56.473     | 58.178     |  16.0 | 79.86
+Bond    | 0.00054797 | 0.00061436 | 0.0008421  |   0.0 |  0.00
+Neigh   | 5.4144     | 5.6415     | 5.8766     |   6.5 |  7.98
+Comm    | 0.54172    | 2.2614     | 3.6841     |  80.8 |  3.20
+Output  | 0.00088166 | 0.0009507  | 0.0012525  |   0.0 |  0.00
+Modify  | 6.082      | 6.3061     | 6.5227     |   5.8 |  8.92
+Other   |            | 0.03528    |            |       |  0.05
+
+Nlocal:          45.75 ave          57 max          38 min
+Histogram: 2 0 2 0 0 2 1 0 0 1
+Nghost:        3613.62 ave        3737 max        3495 min
+Histogram: 1 1 0 1 2 0 1 0 1 1
+Neighs:        32800.5 ave       40250 max       27395 min
+Histogram: 2 1 1 0 0 1 1 1 0 1
+
+Total # of neighbors = 262404
+Ave neighs/atom = 716.95082
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+
+# Obtain new stress tensor Negative deformation, convert index from LAMMPS to Voigt
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1neg equal ${d1}
+variable C1neg equal -24.7779644589295
+variable C2neg equal ${d2}
+variable C2neg equal -63.2230397278561
+variable C3neg equal ${d3}
+variable C3neg equal -71.6141820981331
+variable C4neg equal ${d4}
+variable C4neg equal -10.667429942371
+variable C5neg equal ${d5}
+variable C5neg equal 1.91358982115414
+variable C6neg equal ${d6}
+variable C6neg equal 2.75217170852403
+
+# Reset box and simulation parameters
+clear
+  using 1 OpenMP thread(s) per MPI task
+# box tilt large
+read_restart equil.res
+Reading restart file ...
+  restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
+  restoring atom style full from restart
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  pair style reaxff stores no restart info
+  366 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_restart CPU = 0.002 seconds
+print "*****Positive-change ${dir} starts.*****"
+*****Positive-change 5 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+Resetting global fix info from restart file:
+  fix style: nvt, fix ID: 4
+
+# Positive deformation
+variable delta equal ${up}*${len0}
+variable delta equal 0.01*${len0}
+variable delta equal 0.01*17.6074
+variable deltaxy equal ${up}*xy
+variable deltaxy equal 0.01*xy
+variable deltaxz equal ${up}*xz
+variable deltaxz equal 0.01*xz
+variable deltayz equal ${up}*yz
+variable deltayz equal 0.01*yz
+if "${dir} == 1" then    "change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box"
+if "${dir} == 2" then    "change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box"
+if "${dir} == 3" then    "change_box all z delta 0 ${delta} remap units box"
+if "${dir} == 4" then    "change_box all yz delta ${delta} remap units box"
+if "${dir} == 5" then    "change_box all xz delta ${delta} remap units box"
+change_box all xz delta ${delta} remap units box
+change_box all xz delta 0.176074 remap units box
+Changing box ...
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 0.017574 0.0807)
+if "${dir} == 6" then    "change_box all xy delta ${delta} remap units box"
+
+# Run positive deformation MD
+# save trajectory
+dump dump_pos${dir} all custom ${nthermo} dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos5 all custom ${nthermo} dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos5 all custom 100 dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos5 all custom 100 dump/pos_deform5.lammpstrj id type x y z
+run ${nrun}
+run 2000
+All restart file global fix info was re-assigned
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.4 | 139.6 | 144.5 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   288.82459     -44360.896      18601.298      0              3583.6077    
+       100   301.20615     -44357.188      15546.68       16132.561      3583.6077    
+       200   294.90321     -44348.226      4723.7416      17894.499      3583.6077    
+       300   296.61993     -44365.376      17506.292      14649.234      3583.6077    
+       400   279.65132     -44386.979      19970.038      18153.568      3583.6077    
+       500   305.7918      -44413.176      12497.582      14060.051      3583.6077    
+       600   301.80062     -44390.05       22742.576      19657          3583.6077    
+       700   296.95829     -44369.439      21536.463      17392.495      3583.6077    
+       800   305.76539     -44371.835      9362.6185      15001.331      3583.6077    
+       900   295.73643     -44362.762      8484.374       14319.915      3583.6077    
+      1000   305.90587     -44387.757      17590.344      18894.524      3583.6077    
+      1100   293.58308     -44393.885      11123.865      13248.407      3583.6077    
+      1200   300.39455     -44400.994      6152.8819      13028.534      3583.6077    
+      1300   279.73697     -44356.76       14473.646      15381.832      3583.6077    
+      1400   326.53468     -44384.021      23853.774      20932.647      3583.6077    
+      1500   305.68158     -44369.467      4139.6867      15819.15       3583.6077    
+      1600   296.15151     -44367.539      18387.741      13448.484      3583.6077    
+      1700   292.94163     -44373.943      417.78344      17141.453      3583.6077    
+      1800   298.77513     -44379.015      14226.316      15356.619      3583.6077    
+      1900   283.72011     -44365.209      17744.257      15991.53       3583.6077    
+      2000   290.24855     -44363.558      14433.78       17978.28       3583.6077    
+Loop time of 70.9293 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 1.218 ns/day, 19.703 hours/ns, 28.197 timesteps/s, 10.320 katom-step/s
+98.8% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 55.036     | 56.635     | 58.245     |  16.4 | 79.85
+Bond    | 0.00050499 | 0.0006169  | 0.00086456 |   0.0 |  0.00
+Neigh   | 5.3764     | 5.6236     | 5.8744     |   6.7 |  7.93
+Comm    | 0.62042    | 2.2488     | 3.8628     |  83.1 |  3.17
+Output  | 0.0031206  | 0.0059884  | 0.0072975  |   2.1 |  0.01
+Modify  | 6.1388     | 6.3801     | 6.6152     |   6.0 |  8.99
+Other   |            | 0.03535    |            |       |  0.05
+
+Nlocal:          45.75 ave          59 max          36 min
+Histogram: 2 1 0 2 0 0 0 2 0 1
+Nghost:        3593.25 ave        3731 max        3473 min
+Histogram: 1 1 1 0 2 0 1 1 0 1
+Neighs:        32784.6 ave       41628 max       26002 min
+Histogram: 2 1 0 2 0 0 0 2 0 1
+
+Total # of neighbors = 262277
+Ave neighs/atom = 716.60383
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+undump dump_pos${dir}
+undump dump_pos5
+
+# Run equilibration
+print "*****Equilibration pos${dir} starts.*****"
+*****Equilibration pos5 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+unfix avgp
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+run ${nequil}
+run 2000
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.3 | 139.6 | 144.4 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   290.24855     -44363.558      14433.913      0              3583.6077    
+       100   292.87287     -44369.509      4074.3333      14290.456      3583.6077    
+       200   296.5059      -44397.021      21947.436      15826.305      3583.6077    
+       300   273.04482     -44393.772      18994.906      15257.643      3583.6077    
+       400   285.21641     -44388.1        20474.202      12964.662      3583.6077    
+       500   274.51183     -44357.433      6469.3723      12194.922      3583.6077    
+       600   290.62642     -44364.495      7767.8917      15013.479      3583.6077    
+       700   299.11483     -44371.526      18627.072      21737.519      3583.6077    
+       800   297.37514     -44373.737      20532.037      20594.483      3583.6077    
+       900   289.67509     -44382.74       4136.8886      16829.241      3583.6077    
+      1000   293.56853     -44398.242     -781.4709       10930.987      3583.6077    
+      1100   275.62084     -44374.757      15497.238      8697.9068      3583.6077    
+      1200   310.22398     -44377.125      10133.521      14893.051      3583.6077    
+      1300   294.5265      -44350.544      18610.659      15568.683      3583.6077    
+      1400   309.534       -44368.023      14684.284      19134.966      3583.6077    
+      1500   297.89031     -44378.534      15414.17       17115.802      3583.6077    
+      1600   290.24535     -44403.709      5334.6694      17447.201      3583.6077    
+      1700   281.8565      -44388.094      12139.283      12945.305      3583.6077    
+      1800   277.99191     -44361.661      5600.6846      13873.323      3583.6077    
+      1900   297.45574     -44367.517      11273.249      12843.98       3583.6077    
+      2000   313.80082     -44374.694      16404.967      14810.771      3583.6077    
+Loop time of 70.8257 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 1.220 ns/day, 19.674 hours/ns, 28.238 timesteps/s, 10.335 katom-step/s
+98.9% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 55.19      | 56.561     | 58.067     |  15.0 | 79.86
+Bond    | 0.00050281 | 0.00062588 | 0.00087836 |   0.0 |  0.00
+Neigh   | 5.4342     | 5.6684     | 5.9267     |   6.7 |  8.00
+Comm    | 0.66414    | 2.1861     | 3.5693     |  77.1 |  3.09
+Output  | 0.00085907 | 0.00096939 | 0.0012609  |   0.0 |  0.00
+Modify  | 6.124      | 6.3733     | 6.5961     |   6.0 |  9.00
+Other   |            | 0.0354     |            |       |  0.05
+
+Nlocal:          45.75 ave          57 max          36 min
+Histogram: 2 0 0 2 1 0 0 2 0 1
+Nghost:        3593.38 ave        3721 max        3478 min
+Histogram: 2 0 0 1 1 1 1 0 1 1
+Neighs:        32777.5 ave       40323 max       26015 min
+Histogram: 2 0 0 2 0 1 0 2 0 1
+
+Total # of neighbors = 262220
+Ave neighs/atom = 716.44809
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+
+# Obtain new stress tensor, convert index from LAMMPS to Voigt
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure tensor
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1pos equal ${d1}
+variable C1pos equal 37.3424803469141
+variable C2pos equal ${d2}
+variable C2pos equal 85.6904855512712
+variable C3pos equal ${d3}
+variable C3pos equal 59.0643706302635
+variable C4pos equal ${d4}
+variable C4pos equal 9.63339053424856
+variable C5pos equal ${d5}
+variable C5pos equal 27.0547403619092
+variable C6pos equal ${d6}
+variable C6pos equal -1.78901036610457
+
+# Combine positive and negative
+variable C1${dir} equal 0.5*(${C1neg}+${C1pos})
+variable C15 equal 0.5*(${C1neg}+${C1pos})
+variable C15 equal 0.5*(-24.7779644589295+${C1pos})
+variable C15 equal 0.5*(-24.7779644589295+37.3424803469141)
+variable C2${dir} equal 0.5*(${C2neg}+${C2pos})
+variable C25 equal 0.5*(${C2neg}+${C2pos})
+variable C25 equal 0.5*(-63.2230397278561+${C2pos})
+variable C25 equal 0.5*(-63.2230397278561+85.6904855512712)
+variable C3${dir} equal 0.5*(${C3neg}+${C3pos})
+variable C35 equal 0.5*(${C3neg}+${C3pos})
+variable C35 equal 0.5*(-71.6141820981331+${C3pos})
+variable C35 equal 0.5*(-71.6141820981331+59.0643706302635)
+variable C4${dir} equal 0.5*(${C4neg}+${C4pos})
+variable C45 equal 0.5*(${C4neg}+${C4pos})
+variable C45 equal 0.5*(-10.667429942371+${C4pos})
+variable C45 equal 0.5*(-10.667429942371+9.63339053424856)
+variable C5${dir} equal 0.5*(${C5neg}+${C5pos})
+variable C55 equal 0.5*(${C5neg}+${C5pos})
+variable C55 equal 0.5*(1.91358982115414+${C5pos})
+variable C55 equal 0.5*(1.91358982115414+27.0547403619092)
+variable C6${dir} equal 0.5*(${C6neg}+${C6pos})
+variable C65 equal 0.5*(${C6neg}+${C6pos})
+variable C65 equal 0.5*(2.75217170852403+${C6pos})
+variable C65 equal 0.5*(2.75217170852403+-1.78901036610457)
+
+# Delete dir to make sure it is not reused
+variable dir delete
+# uxy Perturbation
+variable dir equal 6
+include displace.mod.lmp
+# Find which reference length to use
+if "${dir} == 1" then    "variable len0 equal ${lx0}"
+if "${dir} == 2" then    "variable len0 equal ${ly0}"
+if "${dir} == 3" then    "variable len0 equal ${lz0}"
+if "${dir} == 4" then    "variable len0 equal ${lz0}"
+if "${dir} == 5" then    "variable len0 equal ${lz0}"
+if "${dir} == 6" then    "variable len0 equal ${ly0}"
+variable len0 equal ${ly0}
+variable len0 equal 13.535
+
+# Reset box and simulation parameters
+clear
+  using 1 OpenMP thread(s) per MPI task
+# box tilt large
+read_restart equil.res
+Reading restart file ...
+  restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
+  restoring atom style full from restart
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  pair style reaxff stores no restart info
+  366 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_restart CPU = 0.002 seconds
+print "*****Negative-change ${dir} starts.*****"
+*****Negative-change 6 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+Resetting global fix info from restart file:
+  fix style: nvt, fix ID: 4
+
+# Negative deformation
+variable delta equal -${up}*${len0}
+variable delta equal -0.01*${len0}
+variable delta equal -0.01*13.535
+variable deltaxy equal -${up}*xy
+variable deltaxy equal -0.01*xy
+variable deltaxz equal -${up}*xz
+variable deltaxz equal -0.01*xz
+variable deltayz equal -${up}*yz
+variable deltayz equal -0.01*yz
+if "${dir} == 1" then    "change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box"
+if "${dir} == 2" then    "change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box"
+if "${dir} == 3" then    "change_box all z delta 0 ${delta} remap units box"
+if "${dir} == 4" then    "change_box all yz delta ${delta} remap units box"
+if "${dir} == 5" then    "change_box all xz delta ${delta} remap units box"
+if "${dir} == 6" then    "change_box all xy delta ${delta} remap units box"
+change_box all xy delta ${delta} remap units box
+change_box all xy delta -0.13535 remap units box
+Changing box ...
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.62845 -0.1585 0.0807)
+
+# Run MD for Negative deformation
+# save trajectory
+dump dump_neg${dir} all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg6 all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg6 all custom 100 dump/neg_deform${dir}.lammpstrj id type x y z
+dump dump_neg6 all custom 100 dump/neg_deform6.lammpstrj id type x y z
+run ${nrun}
+run 2000
+All restart file global fix info was re-assigned
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.8 | 139.9 | 144.7 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   288.82459     -44359.764      17458.131      0              3583.6077    
+       100   305.4036      -44360.94       17956.512      15024.185      3583.6077    
+       200   307.14489     -44361.468      10189.255      15206.637      3583.6077    
+       300   295.61974     -44367.345      17389.321      17664.298      3583.6077    
+       400   276.16778     -44382.318      12243.08       16216.039      3583.6077    
+       500   284.05216     -44392.676      18339.72       14899.613      3583.6077    
+       600   284.21082     -44381.186      15598.356      18754.489      3583.6077    
+       700   290.16591     -44367.302      4682.3548      15890.366      3583.6077    
+       800   300.49168     -44355.08       12654.113      14234.664      3583.6077    
+       900   317.72312     -44368.452      23428.82       15391.505      3583.6077    
+      1000   309.76797     -44370.976      19423.162      15165.081      3583.6077    
+      1100   294.60591     -44394.195      14358.745      6475.5692      3583.6077    
+      1200   277.0439      -44384.61       14053.353      13392.092      3583.6077    
+      1300   302.58245     -44395.634      19796.793      16820.551      3583.6077    
+      1400   300.53245     -44375.601      7091.8557      20435.956      3583.6077    
+      1500   283.22732     -44356.975      21593.423      16736.345      3583.6077    
+      1600   303.37285     -44363.567      22136.367      17169.482      3583.6077    
+      1700   315.81972     -44333.38       20061.824      17712.945      3583.6077    
+      1800   323.07995     -44352.814      17263.901      21541.4        3583.6077    
+      1900   310.13566     -44370.642      10296.071      21622.624      3583.6077    
+      2000   281.19579     -44358.613      11735.544      18389.136      3583.6077    
+Loop time of 71.0013 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 1.217 ns/day, 19.723 hours/ns, 28.169 timesteps/s, 10.310 katom-step/s
+98.9% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 55.273     | 56.661     | 58.205     |  15.7 | 79.80
+Bond    | 0.00056649 | 0.00066471 | 0.00081044 |   0.0 |  0.00
+Neigh   | 5.4653     | 5.7084     | 5.9733     |   7.1 |  8.04
+Comm    | 0.65283    | 2.2061     | 3.6089     |  80.4 |  3.11
+Output  | 0.0031163  | 0.0053115  | 0.0064252  |   1.8 |  0.01
+Modify  | 6.1257     | 6.3847     | 6.6198     |   6.4 |  8.99
+Other   |            | 0.0355     |            |       |  0.05
+
+Nlocal:          45.75 ave          55 max          38 min
+Histogram: 1 3 0 0 0 1 0 1 1 1
+Nghost:           3598 ave        3724 max        3486 min
+Histogram: 1 1 1 0 2 0 1 1 0 1
+Neighs:        32798.5 ave       39172 max       27461 min
+Histogram: 2 2 0 0 0 1 0 1 1 1
+
+Total # of neighbors = 262388
+Ave neighs/atom = 716.9071
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+undump dump_neg${dir}
+undump dump_neg6
+
+# Run equilibration
+print "*****Equilibration neg${dir} starts.*****"
+*****Equilibration neg6 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+unfix avgp
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+run ${nequil}
+run 2000
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.8 | 139.9 | 144.7 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   281.19579     -44358.613      11735.654      0              3583.6077    
+       100   304.06777     -44379.752      18552.807      17303.786      3583.6077    
+       200   306.11926     -44369.721      6167.0465      22714.581      3583.6077    
+       300   320.35466     -44373.906      13769.229      11878.643      3583.6077    
+       400   301.66038     -44374.851      19349          10314.525      3583.6077    
+       500   280.07442     -44379.053      19042.179      16258.77       3583.6077    
+       600   292.36773     -44386.811      16898.235      18916.426      3583.6077    
+       700   313.26075     -44401.148      9409.5274      14931.988      3583.6077    
+       800   300.64714     -44384.934      23167.038      14525.9        3583.6077    
+       900   294.97046     -44372.666      6406.6668      14378.17       3583.6077    
+      1000   314.57993     -44387.368      14863.713      15835.545      3583.6077    
+      1100   296.16892     -44379.456      20536.796      19539.433      3583.6077    
+      1200   277.23527     -44380.291      17252.772      21370.166      3583.6077    
+      1300   282.82538     -44395.481      22147.366      16288.367      3583.6077    
+      1400   292.80289     -44375.974      15004.082      16394.885      3583.6077    
+      1500   293.72598     -44353.553      19991.466      18343.976      3583.6077    
+      1600   300.03676     -44365.752      19268.208      13192.16       3583.6077    
+      1700   285.49468     -44364.861      12193.468      15640.65       3583.6077    
+      1800   315.44157     -44402.266      12990.406      15938.486      3583.6077    
+      1900   269.69354     -44389.523      12758.2        14072.453      3583.6077    
+      2000   272.2386      -44398.309      15475.476      16937.134      3583.6077    
+Loop time of 70.2177 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 1.230 ns/day, 19.505 hours/ns, 28.483 timesteps/s, 10.425 katom-step/s
+98.9% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 54.088     | 55.725     | 57.598     |  18.0 | 79.36
+Bond    | 0.00051589 | 0.00063011 | 0.00076602 |   0.0 |  0.00
+Neigh   | 5.4034     | 5.6486     | 5.9234     |   7.1 |  8.04
+Comm    | 0.57148    | 2.4608     | 4.108      |  86.5 |  3.50
+Output  | 0.0008005  | 0.00088179 | 0.0011709  |   0.0 |  0.00
+Modify  | 6.0773     | 6.3466     | 6.5834     |   6.4 |  9.04
+Other   |            | 0.0355     |            |       |  0.05
+
+Nlocal:          45.75 ave          57 max          37 min
+Histogram: 1 1 1 1 0 1 1 1 0 1
+Nghost:        3616.88 ave        3739 max        3508 min
+Histogram: 1 1 1 0 1 2 0 0 1 1
+Neighs:        32795.6 ave       40288 max       26864 min
+Histogram: 1 2 1 0 0 1 1 1 0 1
+
+Total # of neighbors = 262365
+Ave neighs/atom = 716.84426
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+
+# Obtain new stress tensor Negative deformation, convert index from LAMMPS to Voigt
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1neg equal ${d1}
+variable C1neg equal -15.7971127453855
+variable C2neg equal ${d2}
+variable C2neg equal -77.9946843998816
+variable C3neg equal ${d3}
+variable C3neg equal -57.0595032634611
+variable C4neg equal ${d4}
+variable C4neg equal 16.7649619208737
+variable C5neg equal ${d5}
+variable C5neg equal 7.08476645487732
+variable C6neg equal ${d6}
+variable C6neg equal 17.7710299335393
+
+# Reset box and simulation parameters
+clear
+  using 1 OpenMP thread(s) per MPI task
+# box tilt large
+read_restart equil.res
+Reading restart file ...
+  restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
+  restoring atom style full from restart
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.4931 -0.1585 0.0807)
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  2 by 2 by 2 MPI processor grid
+  pair style reaxff stores no restart info
+  366 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_restart CPU = 0.002 seconds
+print "*****Positive-change ${dir} starts.*****"
+*****Positive-change 6 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+Resetting global fix info from restart file:
+  fix style: nvt, fix ID: 4
+
+# Positive deformation
+variable delta equal ${up}*${len0}
+variable delta equal 0.01*${len0}
+variable delta equal 0.01*13.535
+variable deltaxy equal ${up}*xy
+variable deltaxy equal 0.01*xy
+variable deltaxz equal ${up}*xz
+variable deltaxz equal 0.01*xz
+variable deltayz equal ${up}*yz
+variable deltayz equal 0.01*yz
+if "${dir} == 1" then    "change_box all x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap units box"
+if "${dir} == 2" then    "change_box all y delta 0 ${delta} yz delta ${deltayz} remap units box"
+if "${dir} == 3" then    "change_box all z delta 0 ${delta} remap units box"
+if "${dir} == 4" then    "change_box all yz delta ${delta} remap units box"
+if "${dir} == 5" then    "change_box all xz delta ${delta} remap units box"
+if "${dir} == 6" then    "change_box all xy delta ${delta} remap units box"
+change_box all xy delta ${delta} remap units box
+change_box all xy delta 0.13535 remap units box
+Changing box ...
+WARNING: Triclinic box skew is large. LAMMPS will run inefficiently. (src/domain.cpp:220)
+  triclinic box = (0 0 0) to (15.0372 13.535 17.6074) with tilt (-7.35775 -0.1585 0.0807)
+
+# Run positive deformation MD
+# save trajectory
+dump dump_pos${dir} all custom ${nthermo} dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos6 all custom ${nthermo} dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos6 all custom 100 dump/pos_deform${dir}.lammpstrj id type x y z
+dump dump_pos6 all custom 100 dump/pos_deform6.lammpstrj id type x y z
+run ${nrun}
+run 2000
+All restart file global fix info was re-assigned
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.1 | 139.4 | 144.3 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   288.82459     -44361.973      14033.607      0              3583.6077    
+       100   300.07614     -44356.274      17634.805      16773.492      3583.6077    
+       200   310.66952     -44365.273      12548.503      18045.078      3583.6077    
+       300   305.09184     -44374.329      19577.851      15845.656      3583.6077    
+       400   276.77491     -44381.504      12816.015      15876.482      3583.6077    
+       500   289.54577     -44402.974      22426.354      16758.381      3583.6077    
+       600   285.6576      -44379.955      11786.266      19387.027      3583.6077    
+       700   299.19822     -44375.04       22316.918      14285.049      3583.6077    
+       800   312.76441     -44371.124      10764.124      16396.129      3583.6077    
+       900   292.43157     -44341.56       13790.947      14956.329      3583.6077    
+      1000   302.18216     -44357.944      21218.048      14722.717      3583.6077    
+      1100   296.2996      -44388.901      9240.6457      11738.232      3583.6077    
+      1200   286.36298     -44388.81       7070.0083      12869.238      3583.6077    
+      1300   299.00353     -44385.175      15231.909      15096.412      3583.6077    
+      1400   300.06924     -44364.423      15650.547      22602.182      3583.6077    
+      1500   308.66786     -44360.754      11729.33       11609.272      3583.6077    
+      1600   324.60585     -44384.854      6823.6424      14664.667      3583.6077    
+      1700   298.6528      -44370.201      23505.681      17540.232      3583.6077    
+      1800   294.56402     -44372.081      10378.307      15142.312      3583.6077    
+      1900   299.61989     -44362.706      23744.814      17191.068      3583.6077    
+      2000   332.3696      -44367.577      26892.119      18539.199      3583.6077    
+Loop time of 64.1556 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 1.347 ns/day, 17.821 hours/ns, 31.174 timesteps/s, 11.410 katom-step/s
+98.8% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 48.142     | 49.772     | 51.656     |  21.0 | 77.58
+Bond    | 0.00030584 | 0.00042353 | 0.00051301 |   0.0 |  0.00
+Neigh   | 5.2569     | 5.4869     | 5.7225     |   6.5 |  8.55
+Comm    | 0.753      | 2.6424     | 4.2816     |  91.6 |  4.12
+Output  | 0.0028282  | 0.0052945  | 0.0064544  |   2.0 |  0.01
+Modify  | 5.9811     | 6.2141     | 6.4359     |   5.9 |  9.69
+Other   |            | 0.03403    |            |       |  0.05
+
+Nlocal:          45.75 ave          56 max          36 min
+Histogram: 1 0 1 2 0 0 1 2 0 1
+Nghost:        3589.12 ave        3694 max        3495 min
+Histogram: 1 1 1 0 2 0 1 1 0 1
+Neighs:        32767.6 ave       39528 max       25980 min
+Histogram: 1 1 1 1 0 0 1 2 0 1
+
+Total # of neighbors = 262141
+Ave neighs/atom = 716.23224
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+undump dump_pos${dir}
+undump dump_pos6
+
+# Run equilibration
+print "*****Equilibration pos${dir} starts.*****"
+*****Equilibration pos6 starts.*****
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+unfix avgp
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  10 10 100 c_thermo_press mode vector
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press f_avgp[1] vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+thermo_modify norm no
+
+# NVT
+fix 4 all nvt temp ${temp} ${temp} ${tdamp}
+fix 4 all nvt temp 300 ${temp} ${tdamp}
+fix 4 all nvt temp 300 300 ${tdamp}
+fix 4 all nvt temp 300 300 50
+run ${nequil}
+run 2000
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 135.1 | 139.3 | 143.6 Mbytes
+   Step          Temp          PotEng         Press        f_avgp[1]        Volume    
+         0   332.3696      -44367.577      26892.322      0              3583.6077    
+       100   292.9083      -44342.353      17979.424      18302.248      3583.6077    
+       200   294.63084     -44369.603      19527.271      14588.52       3583.6077    
+       300   281.62499     -44361.509      8982.9544      13411.935      3583.6077    
+       400   302.17312     -44379.827      18212.023      15048.347      3583.6077    
+       500   304.41096     -44379.438      11450.347      15871.11       3583.6077    
+       600   289.62198     -44366.052      9591.1598      13236.256      3583.6077    
+       700   306.99493     -44378.914     -10614.672      16250.157      3583.6077    
+       800   309.05778     -44385.156      15566.798      14069.482      3583.6077    
+       900   289.21691     -44378.863      11753.865      13049.039      3583.6077    
+      1000   302.51686     -44400.604      16683.385      12372.344      3583.6077    
+      1100   301.5831      -44390.415      14945.43       10282.333      3583.6077    
+      1200   313.87974     -44382.796      14784.682      18915.166      3583.6077    
+      1300   295.5983      -44352.653      9994.7093      15202.578      3583.6077    
+      1400   298.69422     -44369.554      13376.148      18062.09       3583.6077    
+      1500   284.30783     -44387.659      26602.215      17096.789      3583.6077    
+      1600   287.72567     -44390.63       18763.184      22816.524      3583.6077    
+      1700   318.3992      -44406.567      5052.6371      18344.636      3583.6077    
+      1800   319.12058     -44385.625      11229.467      13722.1        3583.6077    
+      1900   307.83224     -44372.116      17875.422      17966.237      3583.6077    
+      2000   312.81093     -44384.51       24220.664      19058.588      3583.6077    
+Loop time of 63.6827 on 8 procs for 2000 steps with 366 atoms
+
+Performance: 1.357 ns/day, 17.690 hours/ns, 31.406 timesteps/s, 11.494 katom-step/s
+98.8% CPU use with 8 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 47.867     | 49.524     | 51.228     |  19.7 | 77.77
+Bond    | 0.00030985 | 0.0004138  | 0.00049379 |   0.0 |  0.00
+Neigh   | 5.2616     | 5.4701     | 5.7033     |   6.0 |  8.59
+Comm    | 0.74864    | 2.4619     | 4.1318     |  88.8 |  3.87
+Output  | 0.00049169 | 0.00053832 | 0.00076799 |   0.0 |  0.00
+Modify  | 5.9604     | 6.1917     | 6.3923     |   5.4 |  9.72
+Other   |            | 0.03417    |            |       |  0.05
+
+Nlocal:          45.75 ave          57 max          38 min
+Histogram: 3 0 1 0 0 1 2 0 0 1
+Nghost:        3570.25 ave        3672 max        3475 min
+Histogram: 1 1 0 1 1 1 1 1 0 1
+Neighs:        32804.9 ave       40310 max       27439 min
+Histogram: 3 0 1 0 0 1 1 1 0 1
+
+Total # of neighbors = 262439
+Ave neighs/atom = 717.04645
+Ave special neighs/atom = 0
+Neighbor list builds = 200
+Dangerous builds not checked
+
+# Obtain new stress tensor, convert index from LAMMPS to Voigt
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure tensor
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1pos equal ${d1}
+variable C1pos equal -5.69852407375185
+variable C2pos equal ${d2}
+variable C2pos equal 60.1140126186078
+variable C3pos equal ${d3}
+variable C3pos equal 54.4086964083119
+variable C4pos equal ${d4}
+variable C4pos equal -6.90329640594561
+variable C5pos equal ${d5}
+variable C5pos equal 9.64140988760962
+variable C6pos equal ${d6}
+variable C6pos equal -8.67250790466076
+
+# Combine positive and negative
+variable C1${dir} equal 0.5*(${C1neg}+${C1pos})
+variable C16 equal 0.5*(${C1neg}+${C1pos})
+variable C16 equal 0.5*(-15.7971127453855+${C1pos})
+variable C16 equal 0.5*(-15.7971127453855+-5.69852407375185)
+variable C2${dir} equal 0.5*(${C2neg}+${C2pos})
+variable C26 equal 0.5*(${C2neg}+${C2pos})
+variable C26 equal 0.5*(-77.9946843998816+${C2pos})
+variable C26 equal 0.5*(-77.9946843998816+60.1140126186078)
+variable C3${dir} equal 0.5*(${C3neg}+${C3pos})
+variable C36 equal 0.5*(${C3neg}+${C3pos})
+variable C36 equal 0.5*(-57.0595032634611+${C3pos})
+variable C36 equal 0.5*(-57.0595032634611+54.4086964083119)
+variable C4${dir} equal 0.5*(${C4neg}+${C4pos})
+variable C46 equal 0.5*(${C4neg}+${C4pos})
+variable C46 equal 0.5*(16.7649619208737+${C4pos})
+variable C46 equal 0.5*(16.7649619208737+-6.90329640594561)
+variable C5${dir} equal 0.5*(${C5neg}+${C5pos})
+variable C56 equal 0.5*(${C5neg}+${C5pos})
+variable C56 equal 0.5*(7.08476645487732+${C5pos})
+variable C56 equal 0.5*(7.08476645487732+9.64140988760962)
+variable C6${dir} equal 0.5*(${C6neg}+${C6pos})
+variable C66 equal 0.5*(${C6neg}+${C6pos})
+variable C66 equal 0.5*(17.7710299335393+${C6pos})
+variable C66 equal 0.5*(17.7710299335393+-8.67250790466076)
+
+# Delete dir to make sure it is not reused
+variable dir delete
+
+# Calc and output
+include calc.mod.lmp
+variable C11all equal ${C11}
+variable C11all equal 100.608475396005
+variable C22all equal ${C22}
+variable C22all equal 12.7325231493488
+variable C33all equal ${C33}
+variable C33all equal 32.9866106903512
+
+variable C44all equal ${C44}
+variable C44all equal 2.39224712238415
+variable C55all equal ${C55}
+variable C55all equal 14.4841650915317
+variable C66all equal ${C66}
+variable C66all equal 4.54926101443927
+
+variable C12all equal 0.5*(${C12}+${C21})
+variable C12all equal 0.5*(-23.0886842810854+${C21})
+variable C12all equal 0.5*(-23.0886842810854+100.455375890924)
+variable C13all equal 0.5*(${C13}+${C31})
+variable C13all equal 0.5*(13.7126254134904+${C31})
+variable C13all equal 0.5*(13.7126254134904+56.6999165178819)
+variable C23all equal 0.5*(${C23}+${C32})
+variable C23all equal 0.5*(-23.9557335306699+${C32})
+variable C23all equal 0.5*(-23.9557335306699+-17.4719096584429)
+
+variable C14all equal 0.5*(${C14}+${C41})
+variable C14all equal 0.5*(17.9893626682081+${C41})
+variable C14all equal 0.5*(17.9893626682081+2.7385781516426)
+variable C15all equal 0.5*(${C15}+${C51})
+variable C15all equal 0.5*(6.2822579439923+${C51})
+variable C15all equal 0.5*(6.2822579439923+0.9602932702555)
+variable C16all equal 0.5*(${C16}+${C61})
+variable C16all equal 0.5*(-10.7478184095687+${C61})
+variable C16all equal 0.5*(-10.7478184095687+-2.59863819101354)
+
+variable C24all equal 0.5*(${C24}+${C42})
+variable C24all equal 0.5*(27.1320659808381+${C42})
+variable C24all equal 0.5*(27.1320659808381+-8.12760343941751)
+variable C25all equal 0.5*(${C25}+${C52})
+variable C25all equal 0.5*(11.2337229117075+${C52})
+variable C25all equal 0.5*(11.2337229117075+-7.07499276853523)
+variable C26all equal 0.5*(${C26}+${C62})
+variable C26all equal 0.5*(-8.9403358906369+${C62})
+variable C26all equal 0.5*(-8.9403358906369+12.2217703700236)
+
+variable C34all equal 0.5*(${C34}+${C43})
+variable C34all equal 0.5*(31.7661808733897+${C43})
+variable C34all equal 0.5*(31.7661808733897+21.1701232192363)
+variable C35all equal 0.5*(${C35}+${C53})
+variable C35all equal 0.5*(-6.2749057339348+${C53})
+variable C35all equal 0.5*(-6.2749057339348+-3.84677516195777)
+variable C36all equal 0.5*(${C36}+${C63})
+variable C36all equal 0.5*(-1.3254034275746+${C63})
+variable C36all equal 0.5*(-1.3254034275746+-3.51724125147711)
+
+variable C45all equal 0.5*(${C45}+${C54})
+variable C45all equal 0.5*(-0.517019704061219+${C54})
+variable C45all equal 0.5*(-0.517019704061219+2.07714212538385)
+variable C46all equal 0.5*(${C46}+${C64})
+variable C46all equal 0.5*(4.93083275746404+${C64})
+variable C46all equal 0.5*(4.93083275746404+5.8545303952685)
+variable C56all equal 0.5*(${C56}+${C65})
+variable C56all equal 0.5*(8.36308817124347+${C65})
+variable C56all equal 0.5*(8.36308817124347+0.48158067120973)
+
+# print stiffness tensor to "C.log"
+print """
+# stiffness tensor (GPa) for ${structure} by change-box method
+${C11all} ${C12all} ${C13all} ${C14all} ${C15all} ${C16all}
+${C12all} ${C22all} ${C23all} ${C24all} ${C25all} ${C26all}
+${C13all} ${C23all} ${C33all} ${C34all} ${C35all} ${C36all}
+${C14all} ${C24all} ${C34all} ${C44all} ${C45all} ${C46all}
+${C15all} ${C25all} ${C35all} ${C45all} ${C55all} ${C56all}
+${C16all} ${C26all} ${C36all} ${C46all} ${C56all} ${C66all}
+"""  file C.log screen no
+
+Total wall time: 0:42:52

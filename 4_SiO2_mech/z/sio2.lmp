@@ -1,0 +1,82 @@
+# Initialization
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+timestep        0.5   # fs
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no 
+
+variable        T equal 300.0
+variable        tdamp equal 50.0
+variable        nevery equal 10 
+variable        nrepeat equal 5 
+variable        ndeform equal ${nevery}*${nrepeat}
+variable        drate equal 0.0001
+variable        nthermo equal 100
+# variable        nequil equal 50*v_nthermo
+variable        nrun equal 200*v_nthermo
+variable        seed string 12346
+
+
+# Read the initial sctructure
+# box tilt large
+read_data       nvt_equil.data
+
+# Assign the force field 
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHOFe.ff O Si
+
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+
+# Print system info
+thermo          ${nthermo}
+thermo_style    custom step temp press density pe etotal
+
+
+# Save box length for calculation
+# variable        lx0 equal lx
+# variable        ly0 equal ly
+variable         lz_temp equal lz
+# variable        lx0 equal lx
+# variable        ly0 equal ly
+variable         lz0 equal ${lz_temp}
+
+# Change the shape of the box
+print "*****Deformation starts.*****"
+fix        reshape_nvt all nvt temp ${T} ${T} ${tdamp}
+fix         deform_z all deform 1 z erate ${drate} remap x units box
+
+# Calculate strain, stress
+# variable        strainx equal "(lx - v_lx0)/v_lx0"
+# variable        strainy equal "(ly - v_ly0)/v_ly0"
+variable        strainz equal "(lz-v_lz0)/v_lz0"
+# variable        stressx equal "-pxx/10000"
+# variable        stressy equal "-pyy/10000"
+variable        stressz equal "-pzz*1.1325e-4"
+variable        nstep equal step
+
+
+# Output stress, strain data to the "stress-strain.csv"
+fix export_data1 all ave/time ${nevery} ${nrepeat} ${ndeform} v_strainz v_stressz &
+    file stress-strain-avg.csv &
+    title1 "# step strain stress" &
+    title2 "#"
+
+# fix export_data2 all print ${ndeform} "${nstep} ${strainz} ${stressz}" &
+#     title "step strain stress" &
+#     file stress-strain.csv screen no
+
+dump        dump2 all custom ${nthermo} main.lammpstrj   id   type   x   y   z   q
+# Print system info
+thermo          ${nthermo}
+thermo_style    custom step temp press density pzz lz
+run         ${nrun}
+write_data final.data
+
+print "*****Done.*****"
+
