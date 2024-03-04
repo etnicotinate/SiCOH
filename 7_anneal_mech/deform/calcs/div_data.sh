@@ -1,3 +1,4 @@
+cp ../../an-lmpdata/*.data .
 for file in *
     do  
         if test -f $file
@@ -24,5 +25,4 @@ for file in *
             # rm -r ${dir}
         fi
     done
-# cp ../0.lmpdata/*.data .
 # rm *.data

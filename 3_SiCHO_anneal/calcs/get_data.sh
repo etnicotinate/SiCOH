@@ -9,5 +9,5 @@ for file in *
             cd ..
         fi
     done
-
+# cp * ../../7_anneal_mech/an-lmpdata
 # rm *.data
