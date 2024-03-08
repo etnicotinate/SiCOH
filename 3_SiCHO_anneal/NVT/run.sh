@@ -1,5 +1,5 @@
 export OMP_NUM_THREADS=6
-mpirun -n 2 lmp -in sicoh.lmp > sicoh.log  &  
+mpirun -n 2 lmp -in sicoh.lmp > out_sicoh.log  &  
 
 # ps -ef|grep mpirun
 # kill <mpirun_PID>

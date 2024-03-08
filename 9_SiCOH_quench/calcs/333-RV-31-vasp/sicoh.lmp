@@ -1,0 +1,95 @@
+# Initialization
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+timestep        0.5   # fs
+
+variable       Tl equal 300.0   # low temperature
+variable       Th equal 2200.0  # high temperature
+variable       Td equal 50.0  # damping time
+variable       P equal 1.0  # pressure
+variable       Ph equal 1.0  # pressure
+variable       Pd equal 10*${Td}  # pressure
+variable       nrun equal 100  # number of steps
+variable       nequil equal 50*${nrun}  # 50
+variable       nheat equal 20*${nrun}   # 20
+variable       ncool equal 100*${nrun}  # 100
+variable       nthermo equal ${nrun}
+
+# Read the initial sctructure
+# box tilt large
+variable structure string 333-RV-31-vasp
+read_data       ${structure}.data
+
+# Assign the force field 
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff C H O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+fix bondinfo all reaxff/bonds ${nthermo} bonds.reaxff
+
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no 
+
+# Print system info
+thermo          ${nthermo}
+thermo_style    custom step temp press density pe etotal
+
+# Energy minimization
+print "*****Minimization starts.*****"
+fix min1 all nve
+minimize 1.0e-6 1.0e-6 100 1000
+unfix min1
+# Save the optimized structure
+write_data ${structure}_opt.data
+
+reset_timestep 0    
+# Save trajectory
+#dump dump1 all custom 500 dump_opt.lammpstrj id type x y z q
+dump dump1 all custom ${nthermo} dump_all.lammpstrj   id   type   x   y   z   q
+
+# equilibration at low T
+print "*****Equilibration starts.*****"
+velocity        all create ${Tl} 12345
+fix             equil1 all npt temp ${Tl} ${Tl} ${Td} tri ${Ph} ${Ph} ${Pd}
+# 1 ps : 1e3 fs / 0.5 fs = 2e3 steps
+run             ${nequil}
+
+# Heat to high T 
+print "*****Heat starts.*****"
+unfix           equil1
+fix             heat1 all nvt temp ${Tl} ${Th} ${Td}
+# 1 ps : 1e3 fs / 0.5 fs = 2e3 steps
+run             ${nheat}
+
+# middle equilibration at high T
+print "*****Middle equilibration starts.*****"
+velocity        all create ${Tl} 12345
+unfix             heat1
+fix             equil2 all nvt temp ${Th} ${Th} ${Td}
+# 1 ps : 1e3 fs / 0.5 fs = 2e3 steps
+# run             ${nequil}
+
+# cool down to low T 
+print "*****Cool starts.*****"
+unfix           equil2
+fix             cool1 all nvt temp ${Th} ${Tl} ${Td}
+# 1 ps : 1e3 fs / 0.5 fs = 2e3 steps
+run             ${ncool}
+
+# final equilibration at low T
+print "*****final equilibration starts.*****"
+unfix             cool1
+fix             equil3 all npt temp ${Tl} ${Tl} ${Td} tri ${Ph} ${Ph} ${Pd}
+# 1 ps : 1e3 fs / 0.5 fs = 2e3 steps
+run             ${nequil}  
+
+write_data  ${structure}-an.data
+
+

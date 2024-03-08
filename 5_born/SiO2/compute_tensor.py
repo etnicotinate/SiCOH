@@ -97,16 +97,15 @@ def main():
     born[[3,5],:] = born[[5,3],:]
     stre[3,5] = stre[5,3]
     
-    breakpoint()
-    
+    # breakpoint()
     CB = kcalmol2J/vol*born  # -> J/m^3=Pa, # Born term
     Cs = vol/kbT*np.cov(stre.T)   # stress fluctuation term
     Ct = N*kbT/vol * Kronecker_delta()  # temp/kinetic term
     C = CB - Cs + Ct
-    write_matrix(CB, 'born_matrix.out')
-    write_matrix(Cs, 'stre_matrix.out')
-    write_matrix(Ct, 'temp_matrix.out')
-    write_matrix(C, 'full_matrix.out')
+    write_matrix(CB*1.0e-9, 'born_matrix.out')
+    write_matrix(Cs*1.0e-9, 'stre_matrix.out')
+    write_matrix(Ct*1.0e-9, 'temp_matrix.out')
+    # write_matrix(C*1.0e-9, 'full_matrix.out')
     write_matrix(C*1.0e-9, r'C.log')    # Pa -> GPa in C.log
     return
 
