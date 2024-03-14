@@ -1,4 +1,4 @@
-export OMP_NUM_THREADS=2
+# export OMP_NUM_THREADS=2
 input_file=sicoh.lmp
 mpirun -n 8 lmp -in $input_file > out_${input_file%.lmp}.log &
 # mpirun -n 8 lmp -in sicoh.lmp -sr > out_${input_file%.lmp}.log

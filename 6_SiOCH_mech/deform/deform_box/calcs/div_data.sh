@@ -19,7 +19,7 @@ for file in *
             dir=$file
             echo "dir: $dir"
             cp ../*.lmp $dir
-            # cp ../run.sh $dir
+            cp ../run.sh $dir
             # rm $dir/0.*.lmp
             # rm -r ${dir}
         fi
