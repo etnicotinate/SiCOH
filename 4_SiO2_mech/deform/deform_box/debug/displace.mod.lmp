@@ -1,0 +1,68 @@
+# Find which length (sigma) to calculate
+if "${dir} == 1" then &
+   "variable len0 equal ${lx0}" &
+   "variable len  equal f_avgl[1]"
+if "${dir} == 2" then &
+   "variable len0 equal ${ly0}" &
+   "variable len  equal f_avgl[2]"
+if "${dir} == 3" then &
+   "variable len0 equal ${lz0}" &
+   "variable len  equal f_avgl[3]"
+if "${dir} == 4" then &
+   "variable len0 equal ${ly0}" &
+   "variable len  equal f_avgl[2]"
+if "${dir} == 5" then &
+   "variable len0 equal ${lz0}" &
+   "variable len  equal f_avgl[3]"
+if "${dir} == 6" then &
+   "variable len0 equal ${lz0}" &
+   "variable len  equal f_avgl[3]"
+
+# stress vector (sigma) 
+variable sig equal v_len/v_len0
+
+# strain vector (epsilon)
+variable eps1 equal -f_avgp[1]*${ufac}
+variable eps2 equal -f_avgp[2]*${ufac}
+variable eps3 equal -f_avgp[3]*${ufac}
+variable eps4 equal -f_avgp[6]*${ufac}*2
+variable eps5 equal -f_avgp[5]*${ufac}*2
+variable eps6 equal -f_avgp[4]*${ufac}*2
+
+# Reset box and simulation parameters
+clear
+# box tilt large
+read_restart equil.res
+
+# Negative deformation
+variable delta equal -${up}*${len0}
+variable deltaxy equal -${up}*xy
+variable deltaxz equal -${up}*xz
+variable deltayz equal -${up}*yz
+if "${dir} == 1" then &
+   "fix deform_n all deform ${nthermo} x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap x units box flip no"
+if "${dir} == 2" then &
+   "fix deform_n all deform ${nthermo} y delta 0 ${delta} yz delta ${deltayz} remap x units box flip no"
+
+# Run MD for Negative deformation
+print "*****Negative-deform ${dir} starts.*****"
+include ff.mod.lmp
+
+# Save stress, strain to "./stress_strain/stress_strain.neg${dir}.out"
+print "# Stress and strain vectors, ${structure}, negative deformation ${dir}" &
+      file stress_strain/stress_strain.neg${dir}.out screen no  
+fix data all print ${nfreq} "${eps1} ${eps2} ${eps3} ${eps4} ${eps5} ${eps6} ${sig}" &
+      append stress_strain/stress_strain.neg${dir}.out screen no &
+      title "# eps1 eps2 eps3 eps4 eps5 eps6 sig" 
+
+# save trajectory
+# if "$(is_defined(dump,dump_neg${dir1}))" then "undump dump_neg${dir1}"
+dump dump_neg${dir} all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+# variable dir1 equal ${dir}
+run ${nrun}
+unfix deform_n
+unfix data
+undump dump_neg${dir}
+
+variable dir delete
+

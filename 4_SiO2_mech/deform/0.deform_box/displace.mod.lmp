@@ -1,0 +1,134 @@
+
+# Find which reference length to use
+if "${dir} == 1" then &
+   "variable len0 equal ${lx0}" 
+if "${dir} == 2" then &
+   "variable len0 equal ${ly0}" 
+if "${dir} == 3" then &
+   "variable len0 equal ${lz0}" 
+if "${dir} == 4" then &
+   "variable len0 equal ${lz0}" 
+if "${dir} == 5" then &
+   "variable len0 equal ${lz0}" 
+if "${dir} == 6" then &
+   "variable len0 equal ${ly0}" 
+
+# define the derivatives, w.r.t. strain tensor
+# Constants uses $, variables use v_ 
+variable d1 equal -(v_pxx1-${pxx0})/(v_delta/v_len0)*${ufac}
+variable d2 equal -(v_pyy1-${pyy0})/(v_delta/v_len0)*${ufac}
+variable d3 equal -(v_pzz1-${pzz0})/(v_delta/v_len0)*${ufac}
+variable d4 equal -(v_pyz1-${pyz0})/(v_delta/v_len0)*${ufac}
+variable d5 equal -(v_pxz1-${pxz0})/(v_delta/v_len0)*${ufac}
+variable d6 equal -(v_pxy1-${pxy0})/(v_delta/v_len0)*${ufac}
+
+# Reset box and simulation parameters
+clear
+# box tilt large
+read_restart equil.res
+
+# Negative deformation
+variable delta equal -${up}*${len0}
+variable deltaxy equal -${up}*xy
+variable deltaxz equal -${up}*xz
+variable deltayz equal -${up}*yz
+if "${dir} == 1" then &
+   "fix deform_n all deform ${nthermo} x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap x units box"
+if "${dir} == 2" then &
+   "fix deform_n all deform ${nthermo} y delta 0 ${delta} yz delta ${deltayz} remap x units box"
+if "${dir} == 3" then &
+   "fix deform_n all deform ${nthermo} z delta 0 ${delta} remap x units box"
+if "${dir} == 4" then &
+   "fix deform_n all deform ${nthermo} yz delta ${delta} remap x units box"
+if "${dir} == 5" then &
+   "fix deform_n all deform ${nthermo} xz delta ${delta} remap x units box"
+if "${dir} == 6" then &
+   "fix deform_n all deform ${nthermo} xy delta ${delta} remap x units box"
+
+# Run MD for Negative deformation
+print "*****Negative-deform ${dir} starts.*****"
+include ff.mod.lmp
+# save trajectory
+if "$(is_defined(dump,dump_neg${dir1}))" then "undump dump_neg${dir1}"
+dump dump_neg${dir} all custom ${nthermo} dump/neg_deform${dir}.lammpstrj id type x y z
+variable dir1 equal ${dir}
+run ${nrun}
+unfix deform_n
+
+# Obtain new stress tensor Negative deformation
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1neg equal ${d1}
+variable C2neg equal ${d2}
+variable C3neg equal ${d3}
+variable C4neg equal ${d4}
+variable C5neg equal ${d5}
+variable C6neg equal ${d6}
+
+# Reset box and simulation parameters
+clear
+# box tilt large
+read_restart equil.res
+
+# Positive deformation
+variable delta equal ${up}*${len0}
+variable deltaxy equal ${up}*xy
+variable deltaxz equal ${up}*xz
+variable deltayz equal ${up}*yz
+if "${dir} == 1" then &
+   "fix deform_p all deform ${nthermo} x delta 0 ${delta} xy delta ${deltaxy} xz delta ${deltaxz} remap x units box"
+if "${dir} == 2" then &
+   "fix deform_p all deform ${nthermo} y delta 0 ${delta} yz delta ${deltayz} remap x units box"
+if "${dir} == 3" then &
+   "fix deform_p all deform ${nthermo} z delta 0 ${delta} remap x units box"
+if "${dir} == 4" then &
+   "fix deform_p all deform ${nthermo} yz delta ${delta} remap x units box"
+if "${dir} == 5" then &
+   "fix deform_p all deform ${nthermo} xz delta ${delta} remap x units box"
+if "${dir} == 6" then &
+   "fix deform_p all deform ${nthermo} xy delta ${delta} remap x units box"
+
+# Run deformation MD
+print "*****Positive-deform ${dir} starts.*****"
+include ff.mod.lmp
+# save trajectory
+if "$(is_defined(dump,dump_pos${dir1}))" then "undump dump_pos${dir1}"
+dump dump_pos${dir} all custom ${nthermo} dump/pos_deform${dir}.lammpstrj id type x y z
+variable dir1 equal ${dir}
+run ${nrun}
+unfix deform_p
+
+# Obtain new stress tensor
+variable pxx1 equal f_avgp[1]
+variable pyy1 equal f_avgp[2]
+variable pzz1 equal f_avgp[3]
+variable pxy1 equal f_avgp[4]
+variable pxz1 equal f_avgp[5]
+variable pyz1 equal f_avgp[6]
+
+# Compute elastic constant from pressure tensor
+# d1 = -[pxx1-pxx0]/[(]v_delta/v_len0] defined in input script
+variable C1pos equal ${d1}
+variable C2pos equal ${d2}
+variable C3pos equal ${d3}
+variable C4pos equal ${d4}
+variable C5pos equal ${d5}
+variable C6pos equal ${d6}
+
+# Combine positive and negative 
+variable C1${dir} equal 0.5*(${C1neg}+${C1pos})
+variable C2${dir} equal 0.5*(${C2neg}+${C2pos})
+variable C3${dir} equal 0.5*(${C3neg}+${C3pos})
+variable C4${dir} equal 0.5*(${C4neg}+${C4pos})
+variable C5${dir} equal 0.5*(${C5neg}+${C5pos})
+variable C6${dir} equal 0.5*(${C6neg}+${C6pos})
+
+# Delete dir to make sure it is not reused
+variable dir delete
