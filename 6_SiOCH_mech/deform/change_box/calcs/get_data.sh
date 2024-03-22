@@ -12,7 +12,10 @@ for file in *
             printf "%-25s" $dir >> ../$log
             cat out_sicoh.log| awk '/Density/{getline; printf "%-10s", $6}' >> ../$log
             python ./tensor2modulus.py| awk '/Young/{printf "%+10s", $3}' >> ../$log
+            # python ./tensor2modulus.py| awk '/unstable/{printf "%+10s", "unstable"}' >> ../$log
+            python ./tensor2modulus.py| grep "unstable" >> ../$log
             echo >> ../$log
+            echo "$dir has done."
             # python ./tensor2modulus.py| grep "Young" >> ../$log
             cd ..
         fi

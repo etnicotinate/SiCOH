@@ -60,14 +60,14 @@ def Kronecker_delta():
 
 
 def write_matrix(C, filename):
-    with open(filename, 'w') as f:
-        f.write("# Cij Matrix from post process computation\n")
-        for i in C:
-            f.write("{:8.5f} {:8.5f} {:8.5f} {:8.5f} {:8.5f} {:8.5f}\n".format(
-                i[0], i[1], i[2], i[3], i[4], i[5],
-                )
-            )
-    return
+    '''Write elastic tensor to file'''
+    np.savetxt(r'C.log', C, fmt='%10.4f', header='Elastic tensor in Gpa')
+    
+    # with open(r'C.log', 'w') as f:
+    #     f.write("# Elastic tensor (GPa)\n")
+    #     for i in C:
+    #         f.write(f"{i[0]:10.4f} {i[1]:10.4f} {i[2]:10.4f} {i[3]:10.4f} {i[4]:10.4f} {i[5]:10.4f}\n")
+    # return
 
 def main():
     N = 243 # number of atoms
