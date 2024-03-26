@@ -2,6 +2,7 @@
 i=0
 for file in *
 do  
+    echo $(date +%F%n%T)
     if test -d $file
     then
         dir=$file
@@ -23,4 +24,3 @@ do
 done
 wait
 echo "All tasks are done."
-

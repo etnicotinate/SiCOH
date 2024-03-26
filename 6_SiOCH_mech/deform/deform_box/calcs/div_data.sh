@@ -9,7 +9,6 @@ for file in *
             echo "file:  $file"
             dir=${file%.data}
             # mkdir -p $dir
-            # mkdir -p $dir/dump
             # cp $file $dir
             # cp ../*.lmp $dir
             # cp ../run.sh $dir
@@ -18,11 +17,13 @@ for file in *
         then
             dir=$file
             echo "dir: $dir"
+            rm $dir/*.lmp
             cp ../*.lmp $dir
             cp ../run.sh $dir
-            # rm $dir/0.*.lmp
+            cp ../compute.py $dir
             # rm -r ${dir}
         fi
     done
+py mod_lmp.py
 # cp ../0.lmpdata/*.data .
 # rm *.data

@@ -2,7 +2,7 @@ log="data.log"
 rm $log
 touch $log
 
-printf "# %-24s%-10s%+10s\n" "Structure" "Density" "Youngs(GPa)">> ./$log
+printf "# %-24s%-16s%-12s%+10s\n" "Structure" "Density" "Youngs(GPa)" "Stability" >> ./$log
 for file in *
     do  
         if test -d $file
@@ -10,13 +10,19 @@ for file in *
             dir=$file
             cd $dir
             printf "%-25s" $dir >> ../$log
-            cat out_sicoh.log| awk '/Density/{getline; printf "%-10s", $6}' >> ../$log
-            python ./tensor2modulus.py| awk '/Young/{printf "%+10s", $3}' >> ../$log
-            # python ./tensor2modulus.py| awk '/unstable/{printf "%+10s", "unstable"}' >> ../$log
-            python ./tensor2modulus.py| grep "unstable" >> ../$log
-            echo >> ../$log
-            echo "$dir has done."
-            # python ./tensor2modulus.py| grep "Young" >> ../$log
+            awk '/Density/{getline; printf "%-16s", $5; exit;}' out_sicoh.log >> ../$log
+            if [ ! -f "modulus.log" ]; then
+                python ./compute.py > modulus.log
+                # python ./tensor2modulus.py > modulus.log
+            fi
+            awk '/Young/{printf "%-16s", $3}' modulus.log >> ../$log
+            if grep -q "unstable" modulus.log; then
+                printf "%+10s" |echo "u" >> ../$log
+            else
+                printf "%+10s" |echo " " >> ../$log
+            fi
+            # echo >> ../$log
+            echo "Data for $dir has been extracted."
             cd ..
         fi
     done
