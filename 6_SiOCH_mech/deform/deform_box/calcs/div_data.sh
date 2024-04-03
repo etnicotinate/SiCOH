@@ -17,13 +17,13 @@ for file in *
         then
             dir=$file
             echo "dir: $dir"
-            rm $dir/*.lmp
+            # rm $dir/*.lmp
             cp ../*.lmp $dir
             cp ../run.sh $dir
             cp ../compute.py $dir
             # rm -r ${dir}
         fi
     done
-py mod_lmp.py
+python mod_lmp.py
 # cp ../0.lmpdata/*.data .
 # rm *.data
