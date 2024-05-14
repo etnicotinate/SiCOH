@@ -20,5 +20,5 @@ do
     fi
 done
 wait
-echo "All tasks are done."
+echo -e "All tasks are done.\n"
 

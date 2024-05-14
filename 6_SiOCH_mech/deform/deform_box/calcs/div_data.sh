@@ -19,8 +19,8 @@ for file in *
             echo "dir: $dir"
             # rm $dir/*.lmp
             cp ../*.lmp $dir
-            cp ../run.sh $dir
-            cp ../compute.py $dir
+            # cp ../run.sh $dir
+            # cp ../compute.py $dir
             # rm -r ${dir}
         fi
     done
