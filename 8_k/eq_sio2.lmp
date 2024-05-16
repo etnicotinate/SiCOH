@@ -1,0 +1,68 @@
+# Initialization
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+timestep        0.5   # fs
+
+variable       T equal 300.0   # temperature
+variable       Td equal 50.0  # damping time
+variable       P equal 1.0  # pressure
+variable       nevery equal 10  
+variable       nrepeat equal 10  
+variable       nfreq equal 100  
+variable       nthermo equal 100 # steps for thermo output
+
+variable       nequil equal 2000*${nthermo}  #  equilibration steps 100
+variable       seed string 123457  # random seed
+
+
+# Read the initial sctructure
+# box tilt large
+variable structure string 333SiO2-1-UFF-c
+read_data       ${structure}.data
+
+# Assign the force field 
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff C H O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+# pair_coeff * * CHONSi.ff C H O Si
+pair_coeff * * CHOFe.ff O Si
+
+# fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+fix myask2 all acks2/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# fix bondinfo all reaxff/bonds ${nthermo} bonds.reaxff
+
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no 
+
+# Print system info
+thermo          ${nthermo}
+thermo_style    custom step pe etotal temp press vol
+
+# Energy minimization
+print "*****Minimization starts.*****"
+minimize 1.0e-6 1.0e-6 100 1000
+min_style cg
+# Save the optimized structure
+write_data ${structure}_opt.data
+velocity        all create ${T} ${seed} dist gaussian
+
+# equilibration 
+print "*****Equilibration starts.*****"
+reset_timestep 0    
+
+fix             equil1 all nvt temp ${T} ${T} ${Td}
+# fix             equil1 all npt temp ${T} ${T} ${Td} tri ${P} ${P} ${Td}
+
+# Save trajectory
+# dump dump1 all custom ${nthermo} dump_eq.lammpstrj   id   type   q   x   y   z
+run             ${nequil}
+unfix          equil1
+if "$(is_defined(dump,dump1))" then "undump dump1"
+
+# Save the equilibrated structure
+write_data ${structure}_equil.data
+write_restart restart.equil
