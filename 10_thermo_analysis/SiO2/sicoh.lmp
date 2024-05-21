@@ -1,0 +1,106 @@
+
+# variable T index 300 400 500  # 
+# label T_loop
+
+# Initialization
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+timestep        0.5   # fs
+
+variable       Tl equal 300.0   # low temperature
+variable       Th equal 2100.0  # high temperature
+variable       Td equal 50.0  # damping time
+variable       P equal 1.0  # pressure
+variable       Ph equal 1.0  # pressure
+variable       Pd equal 10*${Td}  # pressure
+
+variable       nevery equal 10
+variable       nrepeat equal 10
+variable       nthermo equal ${nevery}*${nrepeat}
+variable       nrun equal ${nthermo}  # number of steps
+
+variable       nequil equal 5*${nrun}  # 50
+# variable       nheat equal (${Th}-${Tl})*${nrun}   # 1800
+variable       nheat equal 500   # 1800
+
+
+# Read the initial sctructure
+# box tilt large
+variable structure string SiO2
+read_data       ${structure}.data
+
+# Assign the force field 
+pair_style reaxff NULL safezone 3.0 mincap 150
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# pair_coeff * * SiOCHN_2018.ff C H O Si
+# pair_coeff * * PDMSDecomp.ff Si O
+# pair_coeff * * CHONSi.ff C H O Si
+pair_coeff * * CHOFe.ff O Si
+
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check yes 
+
+# Energy minimization
+print "##### Minimization starts.##### "
+# fix min1 all nve
+minimize 1.0e-6 1.0e-6 100 1000
+# unfix min1
+# Save the optimized structure
+write_data ${structure}_opt.data
+
+# Print system info
+thermo          ${nthermo}
+thermo_style    custom step temp press density vol pe etotal
+
+reset_timestep 0
+
+# equilibration at low T
+print "##### Equilibration starts.##### "
+velocity        all create ${Tl} 12345
+fix             equil1 all npt temp ${Tl} ${Tl} ${Td} tri ${Ph} ${Ph} ${Pd}
+# 1 ps = 1e3 fs / 0.5 fs = 2e3 steps = 20 nruns
+# Save trajectory
+dump dump1 all custom ${nthermo} dump/dump_eq.lammpstrj id type x y z q
+run             ${nequil}
+undump dump1
+reset_timestep  0
+
+# Heat to high T 
+print "##### Heat starts.##### "
+# out put bonds and species information
+fix bondinfo all reaxff/bonds ${nthermo} bonds/bonds.reaxff
+# fix speciesinfo all reaxff/species ${nevery} ${nrepeat} ${nthermo} bonds/species.out
+
+# compute MSD and RDF
+compute msd1 all msd
+fix myMSD all ave/time ${nthermo} 1 ${nthermo} c_msd1[1] c_msd1[2] c_msd1[3] c_msd1[4] c_thermo_temp &
+    file msd.out &
+    title2 "# TimeStep MSD_X MSD_Y MSD_Z MSD_Total Temperture"
+# C-C C-Si Si-O C-H Si-Si
+compute rdf1 all rdf 10 1 1 1 4 3 4 1 2 4 4 cutoff 5.0
+fix myRDF all ave/time ${nthermo} 1 ${nthermo} c_rdf1[*] &
+    file rdf.out mode vector &
+    title3 "# Row r g1(r) coor1(r) ..."
+
+unfix           equil1
+fix             heat1 all nvt temp ${Tl} ${Th} ${Td}
+thermo_style    custom step temp press pe etotal
+dump dump2 all custom ${nthermo} dump/dump_heat.lammpstrj   id   type   x   y   z   q
+
+run             ${nheat}
+
+# # final equilibration at low T
+# print "##### final equilibration starts.##### "
+# unfix             heat1
+# fix             equil3 all npt temp ${Tl} ${Tl} ${Td} tri ${Ph} ${Ph} ${Pd}
+# # 1 ps = 1e3 fs / 0.5 fs = 2e3 steps = 20 nruns
+# run             ${nequil}  
+
+write_data  ${structure}-an.data
+print "##### ${structure} Final Density: $(density) #####"
+

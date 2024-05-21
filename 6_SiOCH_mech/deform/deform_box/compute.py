@@ -154,7 +154,7 @@ def plot_curve(mode='pos', dir: str|int='all'):
 if __name__ == '__main__':
     C, Err = calc_tensor()
     write_C(C)
-    # plot_curve(dir='all')
+    plot_curve(dir='all')
     # C = read_C(r'C.log')
     tensor2modulus(C, Err)
     

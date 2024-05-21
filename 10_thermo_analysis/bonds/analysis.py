@@ -302,7 +302,7 @@ def plot_bonds(filename):
     T = [f['timestep'] for f in frames] # X axis data: timesteps
     temp = read_msd(r'../msd.out')[:,-1]
 
-    Nbonds, Bond_types = calc_bonds(frames[1:]) # Y axis data: bonds percentage; labels: bond types
+    Nbonds, Bond_types = calc_bonds(frames[1:]) # Y axis data: bonds counts; labels: bond types
 
     labels = []
     plt.figure(figsize=(16,8))

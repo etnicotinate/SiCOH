@@ -1,0 +1,290 @@
+LAMMPS (2 Aug 2023 - Update 2)
+  using 2 OpenMP thread(s) per MPI task
+# Initialization
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+timestep        0.5   # fs
+
+# Define MD parameters
+variable nevery equal 1000                  # sampling interval
+variable nrepeat equal 1                 # number of samples
+variable nfreq equal ${nevery}*${nrepeat} # length of one average
+variable nfreq equal 1000*${nrepeat} 
+variable nfreq equal 1000*1 
+variable nthermo equal ${nfreq}/10           # interval for thermo output
+variable nthermo equal 1000/10           
+# 1 ps : 1e3 fs / 0.5 fs = 2e3 steps
+variable nequil equal 10*${nthermo}       # steps of equilibration run 100
+variable nequil equal 10*100       
+# variable nrun equal 20*${nthermo}          # stpes of equilibrated run 50
+variable temp equal 300.0                # temperature of initial sample
+variable tdamp equal 50.0                 # time constant for thermostat
+variable seed equal 123456                # seed for thermostat
+variable ufac equal 1.01325e-4         # pressure unit conversion, from atm to Gpa
+variable up equal 1.0                  # the deformation magnitude 0.01
+variable FF string "SiOCHN_2018.ff C H O Si"          # force field args for pair_coeff
+# pair_coeff * * CHONSSi.ff C H O Si
+# pair_coeff * * CHOSiNa.ff C H O Si
+# pair_coeff * * SiOCHN_2018.ff C H O Si
+# pair_coeff * * PDMSDecomp.ff C H O Si
+# pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# Read the initial sctructure
+# box tilt large
+variable structure string ../0.lmpdata/333U-50C-5-vasp
+
+read_data       ${structure}.data
+read_data       ../0.lmpdata/333U-50C-5-vasp.data
+Reading data file ...
+  triclinic box = (0 0 0) to (15.6782 14.2194 17.6383) with tilt (-7.0409 -1.0144 0.675)
+  2 by 2 by 2 MPI processor grid
+  reading atoms ...
+  350 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.001 seconds
+  read_data CPU = 0.009 seconds
+
+# # Energy minimization
+# print "*****Minimization starts.*****"
+# dump dump_opt all custom 1 dump_opt.lammpstrj id type q x y z
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+pair_coeff * * ${FF}
+pair_coeff * * SiOCHN_2018.ff C H O Si
+WARNING: Van der Waals parameters for element SI indicate inner wall+shielding, but earlier atoms indicate a different van der Waals method. This may cause division-by-zero errors. Keeping van der Waals setting for earlier atoms. (src/REAXFF/reaxff_ffield.cpp:251)
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+fix bondinfo all reaxff/bonds ${nthermo} bonds.reaxff
+fix bondinfo all reaxff/bonds 100 bonds.reaxff
+
+# minimize 1.0e-6 1.0e-6 100 1000
+# min_style cg
+# # Save the optimized structure
+# write_data ${structure}_opt.data
+
+# undump dump_opt
+velocity        all create ${temp} ${seed} dist gaussian
+velocity        all create 300 ${seed} dist gaussian
+velocity        all create 300 123456 dist gaussian
+
+# Equilibration
+include ff.mod.lmp
+# Setup forcefield, system
+# undefine any fix ave/* fix before using reset_timestep
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+if "$(is_defined(fix,avgl))" then "unfix avgl"
+reset_timestep 0
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+pair_coeff * * ${FF}
+pair_coeff * * SiOCHN_2018.ff C H O Si
+WARNING: Van der Waals parameters for element SI indicate inner wall+shielding, but earlier atoms indicate a different van der Waals method. This may cause division-by-zero errors. Keeping van der Waals setting for earlier atoms. (src/REAXFF/reaxff_ffield.cpp:251)
+
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+# fix bondinfo all reaxff/bonds ${nthermo} bonds.reaxff
+# Setup neighbor style
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check no
+
+# Setup output
+thermo		${nthermo}
+thermo		100
+thermo_style custom step temp pe press vol lx ly lz
+# thermo_style custom step vol lx ly lz yz xz xy
+thermo_modify norm no
+# thermo_modify line multi
+
+# Sample pressure (and length vector)
+fix avgp all ave/time  ${nevery} ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  1000 ${nrepeat} ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  1000 1 ${nfreq} c_thermo_press mode vector
+fix avgp all ave/time  1000 1 1000 c_thermo_press mode vector
+# variable lx equal lx
+# variable ly equal ly
+# variable lz equal lz
+# fix avgl all ave/time  ${nevery} ${nrepeat} ${nfreq} v_lx v_ly v_lz
+
+# nvt
+fix fnvt all nvt temp ${temp} ${temp} ${tdamp}
+fix fnvt all nvt temp 300 ${temp} ${tdamp}
+fix fnvt all nvt temp 300 300 ${tdamp}
+fix fnvt all nvt temp 300 300 50
+
+if "$(is_defined(fix,avgp))" then "unfix avgp"
+unfix avgp
+if "$(is_defined(fix,avgl))" then "unfix avgl"
+thermo_style custom step temp pe press density vol
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:903)
+# dump dump_eq all custom ${nthermo} dump/dump_eq.lammpstrj id type q x y z
+
+# compute MSD and RDF
+compute msd1 all msd
+fix myMSD all ave/time ${nevery} ${nrepeat} ${nfreq} c_msd1[1] c_msd1[2] c_msd1[3] c_msd1[4] c_thermo_temp     file msd.out     title2 "# TimeStep MSD_X MSD_Y MSD_Z MSD_Total Temperture"
+fix myMSD all ave/time 1000 ${nrepeat} ${nfreq} c_msd1[1] c_msd1[2] c_msd1[3] c_msd1[4] c_thermo_temp     file msd.out     title2 "# TimeStep MSD_X MSD_Y MSD_Z MSD_Total Temperture"
+fix myMSD all ave/time 1000 1 ${nfreq} c_msd1[1] c_msd1[2] c_msd1[3] c_msd1[4] c_thermo_temp     file msd.out     title2 "# TimeStep MSD_X MSD_Y MSD_Z MSD_Total Temperture"
+fix myMSD all ave/time 1000 1 1000 c_msd1[1] c_msd1[2] c_msd1[3] c_msd1[4] c_thermo_temp     file msd.out     title2 "# TimeStep MSD_X MSD_Y MSD_Z MSD_Total Temperture"
+# C-C C-Si Si-O C-H Si-Si
+# compute rdf1 all rdf 80 1 1 1 4 3 4 1 2 4 4 cutoff 5.0
+# compute rdf1 all rdf 150 * * 1 1  1 4  4 3  3 4 cutoff 5.0
+compute rdf1 all rdf 200 * *  4 3  3 4 cutoff 5.0
+
+fix myRDF all ave/time ${nevery} ${nrepeat} ${nfreq} c_rdf1[*]     file rdf.out mode vector     title3 "# Row r g1(r) coor1(r) ..."
+fix myRDF all ave/time 1000 ${nrepeat} ${nfreq} c_rdf1[*]     file rdf.out mode vector     title3 "# Row r g1(r) coor1(r) ..."
+fix myRDF all ave/time 1000 1 ${nfreq} c_rdf1[*]     file rdf.out mode vector     title3 "# Row r g1(r) coor1(r) ..."
+fix myRDF all ave/time 1000 1 1000 c_rdf1[*]     file rdf.out mode vector     title3 "# Row r g1(r) coor1(r) ..."
+
+run ${nequil}
+run 1000
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+
+- pair reaxff command: doi:10.1016/j.parco.2011.08.005
+
+@Article{Aktulga12,
+ author = {H. M. Aktulga and J. C. Fogarty and S. A. Pandit and A. Y. Grama},
+ title = {Parallel Reactive Molecular Dynamics: {N}umerical Methods and Algorithmic Techniques},
+ journal = {Parallel Computing},
+ year =    2012,
+ volume =  38,
+ number =  {4--5},
+ pages =   {245--259}
+}
+
+- fix qeq/reaxff command: doi:10.1016/j.parco.2011.08.005
+
+@Article{Aktulga12,
+ author = {H. M. Aktulga and J. C. Fogarty and S. A. Pandit and A. Y. Grama},
+ title = {Parallel Reactive Molecular Dynamics: {N}umerical Methods and Algorithmic Techniques},
+ journal = {Parallel Computing},
+ year =    2012,
+ volume =  38,
+ pages =   {245--259}
+}
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+WARNING: Compute rdf cutoff less than neighbor cutoff - forcing a needless neighbor list build (src/compute_rdf.cpp:179)
+WARNING: Fix qeq/reaxff group is not charge neutral, net charge = -10.66 (src/REAXFF/fix_qeq_reaxff.cpp:392)
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = no
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 4 3 3
+  3 neighbor lists, perpetual/occasional/extra = 2 1 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) compute rdf, occasional
+      attributes: half, newton on, cut 7
+      pair build: half/bin/newton/tri
+      stencil: half/bin/3d/tri
+      bin: standard
+  (3) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 129.9 | 130.6 | 131.3 Mbytes
+   Step          Temp          PotEng         Press         Density         Volume    
+         0   300           -30535.512      175786.22      1.6516858      3932.1873    
+       100   1383.7917     -33980.84      -6308.5349      1.6516858      3932.1873    
+       200   781.46282     -34691.386     -3098.4389      1.6516858      3932.1873    
+       300   557.99137     -35194.215      11915.818      1.6516858      3932.1873    
+       400   397.49732     -35428.852      13079.532      1.6516858      3932.1873    
+       500   310.96568     -35566.495     -5553.1145      1.6516858      3932.1873    
+       600   267.00592     -35650.5        4958.9972      1.6516858      3932.1873    
+       700   295.38754     -35755.276     -1511.6807      1.6516858      3932.1873    
+       800   301.97628     -35820.183      5290.9468      1.6516858      3932.1873    
+       900   271.18206     -35861.282     -12002.085      1.6516858      3932.1873    
+      1000   309.61523     -35981.43       3894.9372      1.6516858      3932.1873    
+Loop time of 22.343 on 16 procs for 1000 steps with 350 atoms
+
+Performance: 1.933 ns/day, 12.413 hours/ns, 44.757 timesteps/s, 15.665 katom-step/s
+100.3% CPU use with 8 MPI tasks x 2 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 16.021     | 16.523     | 17.15      |   7.5 | 73.95
+Bond    | 0.0017059  | 0.0017823  | 0.0019392  |   0.2 |  0.01
+Neigh   | 2.1903     | 2.2115     | 2.2473     |   1.3 |  9.90
+Comm    | 0.30674    | 0.93295    | 1.434      |  31.6 |  4.18
+Output  | 0.00054846 | 0.0038824  | 0.0050472  |   2.7 |  0.02
+Modify  | 2.6049     | 2.6434     | 2.6691     |   1.3 | 11.83
+Other   |            | 0.02649    |            |       |  0.12
+
+Nlocal:          43.75 ave          52 max          38 min
+Histogram: 2 0 0 2 2 0 1 0 0 1
+Nghost:        3098.88 ave        3158 max        3048 min
+Histogram: 1 1 0 1 1 2 0 1 0 1
+Neighs:        27190.4 ave       31776 max       23787 min
+Histogram: 2 0 0 2 2 0 1 0 0 1
+
+Total # of neighbors = 217523
+Ave neighs/atom = 621.49429
+Ave special neighs/atom = 0
+Neighbor list builds = 100
+Dangerous builds not checked
+# # Save the equilibrated structure
+# write_data ${structure}_eq.data
+# undump dump_eq
+
+# # use tmp to save initial length and tilt
+# variable tmp equal lx
+# variable lx0 equal ${tmp}
+# variable tmp equal ly
+# variable ly0 equal ${tmp}
+# variable tmp equal lz
+# variable lz0 equal ${tmp}
+
+# variable tmp equal yz
+# variable yz0 equal ${tmp}
+# variable tmp equal xz
+# variable xz0 equal ${tmp}
+# variable tmp equal xy
+# variable xy0 equal ${tmp}
+
+# # Write restart
+# write_restart equil.res
+
+# # dir: direction
+# # uxx Perturbation
+# variable dir equal 1
+# include displace.mod.lmp
+# # uyy Perturbation
+# variable dir equal 2
+# include displace.mod.lmp
+# # uzz Perturbation
+# variable dir equal 3
+# include displace.mod.lmp
+# # uyz Perturbation
+# variable dir equal 4
+# include displace.mod.lmp
+# # uxz Perturbation
+# variable dir equal 5
+# include displace.mod.lmp
+# # uxy Perturbation
+# variable dir equal 6
+# include displace.mod.lmp
+
+# # Calc and output
+# # include calc.mod.lmp
+
+Total wall time: 0:00:22

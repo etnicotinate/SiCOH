@@ -1,3 +1,5 @@
+# cp ../0.lmpdata/*.data .
+
 for file in *
     do  
         if test -f $file
@@ -6,23 +8,30 @@ for file in *
             then
                 continue
             fi    
-            # echo "file:  $file"
-            # dir=${file%.data}
-            # mkdir -p $dir
-            # mkdir -p $dir/dump
+            echo "file:  $file"
+            dir=${file%.data}
+            mkdir -p $dir
             # cp $file $dir
-            # cp ../*.lmp $dir
-            # cp ../run.sh $dir
-            # cp ../tensor2modulus.py $dir
+
         elif test -d $file
         then
             dir=$file
+
+            # skip directory not for calculation
+            if [ "$dir" == "PNGs" ]; then
+                continue
+            fi
+            if [ "$dir" = "an-lmpdata" ]; then
+            continue
+            fi
+
             echo "dir: $dir"
             cp ../*.lmp $dir
             cp ../run.sh $dir
+            cp ../plot_msd_rdf.py $dir
             rm $dir/*.log
             # rm -r ${dir}
         fi
     done
-# cp ../0.lmpdata/*.data .
+python mod_lmp.py
 # rm *.data
