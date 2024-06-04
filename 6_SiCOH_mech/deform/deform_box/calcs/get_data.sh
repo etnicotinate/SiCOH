@@ -2,7 +2,8 @@ log="data.log"
 rm $log
 touch $log
 
-printf "# %-24s%-16s%-12s%+10s\n" "Structure" "Density" "Youngs(GPa)" "Confidence interval(GPa)" "Stability" >> ./$log
+# printf "# %-24s%-16s%-12s%+10s\n" "Structure" "Density" "Youngs(GPa)" "Confidence interval(GPa)" "Stability" >> ./$log
+printf "# %-24s%-12s%+10s\n" "Structure" "Youngs(GPa)" "Confidence interval(GPa)" "Stability" >> ./$log
 for file in *
     do  
         if test -d $file
@@ -11,8 +12,8 @@ for file in *
             cd $dir
             # Structure column
             printf "%-25s" $dir >> ../$log
-            # Density column
-            awk '/Density/{getline; printf "%-16s", $5; exit;}' out_sicoh.log >> ../$log
+            # # Density column
+            # awk '/Density/{getline; printf "%-16s", $5; exit;}' out_sicoh.log >> ../$log
 
             # compute modulus and error
             if [ ! -f "modulus.log" ]; then

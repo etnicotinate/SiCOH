@@ -10,7 +10,7 @@ do
         ./run.sh &
         sleep 0.5
         # keep 6 tasks running at the same time (56 cores > 6*8 or 9*6)
-        if [ $i -eq 6 ]
+        if [ $i -eq 5 ]
         then
             wait
             echo

@@ -26,17 +26,17 @@ for file in *
             fi
 
             echo "dir: $dir"
-            cp ../*.lmp $dir
-            cp ../run.sh $dir
+            # cp ../*.lmp $dir
+            # cp ../run.sh $dir
             cp ../plot_msd_rdf.py $dir
 
             mkdir -p $dir/bonds
-            cp ../bonds/*py $dir/bonds
-            rm $dir/bonds/bonds.reaxff
+            # cp ../bonds/*py $dir/bonds
+            # rm $dir/bonds/bonds.reaxff
 
             # rm $dir/*.log
             # rm -r ${dir}
         fi
     done
-python mod_lmp.py
+# python mod_lmp.py
 # rm *.data

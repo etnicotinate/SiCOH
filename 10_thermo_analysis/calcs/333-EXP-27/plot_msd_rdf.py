@@ -7,14 +7,14 @@ def read_msd(filename):
 
 def plot_msd(filename):
     timesteps, msd_x, msd_y, msd_z, msd_tt, temp = read_msd(filename).T
-    plt.scatter(temp, msd_x, s=.5)
-    plt.scatter(temp, msd_y, s=.5)
-    plt.scatter(temp, msd_z, s=.5)
-    plt.scatter(temp, msd_tt, s=1.5) # total MSD
-    plt.xlabel('Temperature (K)')
+    plt.scatter(timesteps, msd_x, s=.5)
+    plt.scatter(timesteps, msd_y, s=.5)
+    plt.scatter(timesteps, msd_z, s=.5)
+    plt.scatter(timesteps, msd_tt, s=1.5) # total MSD
+    plt.xlabel('Timesteps')
     plt.ylabel('MSD')
     plt.title('Mean Squared Displacement')
-    plt.legend([r'$MSD_x$', r'$MSD_y$', r'$MSD_z$', r'$MSD_{total}$'])
+    plt.legend([r'$MSD_X$', r'$MSD_Y$', r'$MSD_Z$', r'$MSD_{Total}$'])
     pngname = r'msd.png'
     plt.savefig(pngname, dpi=300)
     print(f'MSD has been plotted to {pngname}')

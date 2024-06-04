@@ -2,15 +2,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 # define GLOBAL variables
-# BOND_SELECTED = {'Si-Si', 'H-Si', 'C-O', 'O-O', 'H-H'}
-BOND_SELECTED = {'Si-O', 'H-C', 'Si-H', 'Si-C', 'O-H',}
-ATOM_DIC = {'1': 'C', '2': 'H', '3': 'O', '4': 'Si'}
-# ATOM_DIC = {1: 'C', 2: 'H', 3: 'O', 4: 'Si'}
+BOND_SELECTED = {'Si-O', 'Si-Si', 'O-O'}
+ATOM_DIC = {'1': 'O', '2': 'Si'}
 '''
-1 12.0107 # C
-2 1.00794 # H
-3 15.9994 # O
-4 28.0855 # Si
+1 15.9994 # O
+2 28.0855 # Si
 '''
 
 def build_atom_table(reaxff):
@@ -468,7 +464,7 @@ def plot_bonds(mode='pos', dir: str|int='all'):
 
 
 if __name__ == '__main__':
-    # plot_bonds(mode='pos', dir='all')
+    plot_bonds(mode='pos', dir='all')
     plot_bonds(mode='pos', dir=3)
 
     # Need run plot_bonds first to generate bonds.*.log file

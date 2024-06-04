@@ -7,14 +7,14 @@ def read_msd(filename):
 
 def plot_msd(filename):
     timesteps, msd_x, msd_y, msd_z, msd_tt, temp = read_msd(filename).T
-    plt.scatter(temp, msd_x, s=.5)
-    plt.scatter(temp, msd_y, s=.5)
-    plt.scatter(temp, msd_z, s=.5)
-    plt.scatter(temp, msd_tt, s=1.5) # total MSD
-    plt.xlabel('Temperature (K)')
+    plt.scatter(timesteps, msd_x, s=.5)
+    plt.scatter(timesteps, msd_y, s=.5)
+    plt.scatter(timesteps, msd_z, s=.5)
+    plt.scatter(timesteps, msd_tt, s=1.5) # total MSD
+    plt.xlabel('Timesteps')
     plt.ylabel('MSD')
     plt.title('Mean Squared Displacement')
-    plt.legend([r'$MSD_x$', r'$MSD_y$', r'$MSD_z$', r'$MSD_{total}$'])
+    plt.legend([r'$MSD_X$', r'$MSD_Y$', r'$MSD_Z$', r'$MSD_{Total}$'])
     pngname = r'msd.png'
     plt.savefig(pngname, dpi=300)
     print(f'MSD has been plotted to {pngname}')
@@ -53,7 +53,8 @@ def read_rdf(filename):
 def plot_rdf(filename):
     rdf_data = read_rdf(filename)
     plt.figure(figsize=(8,6))
-    
+    ax = plt.gca()
+
     # Extract the 1st frame
     timestep, data = next(iter(rdf_data.items()))
     labels = ['all-all', 'Si-O', 'O-Si']
@@ -66,7 +67,8 @@ def plot_rdf(filename):
         
         plt.plot(r, g_r, label=f'{label}')
         # plt.plot(r, coor_r, label=f'coor(r)')
-        
+
+    ax.set_ylim(0, 10)    
     plt.xlabel('r')
     plt.ylabel('g(r)')
     plt.title(f'RDF for timestep {timestep}')

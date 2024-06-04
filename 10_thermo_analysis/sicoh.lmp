@@ -10,7 +10,7 @@ atom_style      full
 timestep        0.5   # fs
 
 variable       Tl equal 300.0   # low temperature
-variable       Th equal 310.0  # high temperature 2100.0
+variable       Th equal 1500.0  # high temperature 2100.0
 variable       Td equal 50.0  # damping time
 variable       P equal 1.0  # pressure
 variable       Ph equal 1.0  # pressure
@@ -20,11 +20,11 @@ variable       nevery equal 1000
 variable       nrepeat equal 1
 variable       nfreq equal ${nevery}*${nrepeat}
 variable       nthermo equal ${nfreq}/10
-variable       nrun equal ${nthermo}  # number of steps
+variable       nequil equal 100*${nthermo}  # 50
+# variable       nheat equal (${Th}-${Tl})*${nrun}   # 1800
+variable       nheat equal 1200*${nthermo}   # 1800
 
-variable       nequil equal 50*${nrun}  # 50
-variable       nheat equal (${Th}-${Tl})*${nrun}   # 1800
-# variable       nheat equal 500   # 1800
+
 variable FF string "* * SiOCHN_2018.ff C H O Si"          # force field args for pair_coeff
 # pair_coeff * * CHONSSi.ff C H O Si
 # pair_coeff * * CHOSiNa.ff C H O Si
@@ -75,6 +75,7 @@ neigh_modify    every 10 delay 0 check yes
 
 # Heat to high T 
 print "##### Heat starts.##### "
+velocity        all create ${Tl} 12345
 # out put bonds and species information
 fix bondinfo all reaxff/bonds ${nthermo} bonds/bonds.reaxff
 # fix speciesinfo all reaxff/species ${nevery} ${nrepeat} ${nthermo} bonds/species.out
@@ -85,28 +86,27 @@ fix myMSD all ave/time 10 10 ${nthermo} c_msd1[1] c_msd1[2] c_msd1[3] c_msd1[4] 
     file msd.out &
     title2 "# TimeStep MSD_X MSD_Y MSD_Z MSD_Total Temperture"
 # C-C C-Si Si-O C-H Si-Si
-compute rdf1 all rdf 100 1 1 1 4 3 4 1 2 4 4 cutoff 5.0
+compute rdf1 all rdf 100  1 1 1 4 3 4 1 2  cutoff 5.0
 fix myRDF all ave/time ${nevery} ${nrepeat} ${nfreq} c_rdf1[*] &
     file rdf.out mode vector &
     title3 "# Row r g1(r) coor1(r) ..."
 
-unfix           equil1
+# unfix           equil1
 fix             nve1 all nve
 fix             heat1 all temp/berendsen ${Tl} ${Th} ${Td}
 # fix             heat1 all nvt temp ${Tl} ${Th} ${Td}
 thermo          ${nthermo}
-thermo_style    custom step temp press pe etotal
+thermo_style    custom step temp press vol density
 dump dump2 all custom ${nthermo} dump/dump_heat.lammpstrj   id   type   x   y   z   q
-
 run             ${nheat}
 
-# final equilibration at low T
-print "##### final equilibration starts.##### "
-unfix             heat1
-fix             equil3 all nvt temp ${Tl} ${Tl} ${Td} 
-# fix             equil3 all npt temp ${Tl} ${Tl} ${Td} tri ${Ph} ${Ph} ${Pd}
-# 1 ps = 1e3 fs / 0.5 fs = 2e3 steps = 20 nruns
-run             ${nequil}  
+# # final equilibration at low T
+# print "##### final equilibration starts.##### "
+# unfix             heat1
+# fix             equil3 all nvt temp ${Tl} ${Tl} ${Td} 
+# # fix             equil3 all npt temp ${Tl} ${Tl} ${Td} tri ${Ph} ${Ph} ${Pd}
+# # 1 ps = 1e3 fs / 0.5 fs = 2e3 steps = 20 nruns
+# run             ${nequil}  
 
 write_data  ${structure}-an.data
 print "##### ${structure} Final Density: $(density) #####"

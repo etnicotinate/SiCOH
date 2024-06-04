@@ -56,7 +56,7 @@ def plot_rdf(filename):
     
     # Extract the 1st frame
     timestep, data = next(iter(rdf_data.items()))
-    labels = ['C-C', 'C-Si','Si-O']
+    labels = ['Si-O', 'Si-Si', 'O-O']
     # labels = ['C-C', 'C-Si','Si-O', 'C-H', 'Si-Si']
     r = data[:, 0]  # distance, r
 

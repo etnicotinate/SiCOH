@@ -18,15 +18,17 @@ for file in *
 
             # enter each dir for results
             cd $dir
+            echo "dir: $dir"
 
             # copy final data file to eq-lmpdata
-            cp ${dir}_eq.data ../eq-lmpdata/
-            echo "copied ${dir}_eq.data to eq-lmpdata/"
+            # cp ${dir}_eq.data ../eq-lmpdata/
+            # echo "copied ${dir}_eq.data to eq-lmpdata/"
             
             # copy msd and rdf to PNGs
-            # python plot_msd_rdf.py
-            # cp msd.png ../PNGs/msd/$dir_msd.png
-            # cp rdf.png ../PNGs/rdf/$dir_rdf.png
+            python plot_msd_rdf.py
+            cp msd.png ../PNGs/msd/${dir}_msd.png
+            cp rdf.png ../PNGs/rdf/${dir}_rdf.png
+            echo "copied msd and rdf to PNGs/"
 
                 # copy bonds plot to PNGs
                 # cd bonds

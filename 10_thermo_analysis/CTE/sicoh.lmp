@@ -1,0 +1,130 @@
+
+# Loop over different temperatures
+# variable T equal 300.0
+# variable Tstep equal 100.0
+# variable Tmax equal 600.0
+# if "${T} > ${Tmax}" then "jump SELF end"
+
+variable T index 300 400 500  # 
+label T_loop
+
+# Initialization
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+timestep        0.5   # fs
+
+variable       Tl equal 300.0   # low temperature
+variable       Td equal 50.0  # damping time
+variable       P equal 0.0  # pressure
+variable       Pd equal 10*${Td}  # pressure
+variable       seed equal 12345
+
+variable       nevery equal 1000
+variable       nrepeat equal 1
+variable       nfreq equal ${nevery}*${nrepeat}
+variable       nthermo equal ${nfreq}/10
+variable       nequil equal 10*${nthermo}  # 50
+variable       nrun equal 5*${nthermo}  # 
+
+variable FF string "* * SiOCHN_2018.ff C H O Si"          # force field args for pair_coeff
+# pair_coeff * * CHONSSi.ff C H O Si
+# pair_coeff * * CHOSiNa.ff C H O Si
+# pair_coeff * * SiOCHN_2018.ff C H O Si
+# pair_coeff * * PDMSDecomp.ff C H O Si
+# pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+# box tilt large
+variable structure string 333U-50C-14_eq
+# Read the initial sctructure
+read_data       ${structure}.data
+
+# Assign the force field 
+pair_style reaxff NULL safezone 3.0 mincap 150
+pair_coeff ${FF}
+# Charge equilibration for ReaxFF
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check yes 
+
+# Print system info
+thermo          ${nthermo}
+thermo_style    custom step temp press density vol pe etotal
+
+# # Energy minimization
+# print "##### Minimization starts.##### "
+# # fix min1 all nve
+# minimize 1.0e-6 1.0e-6 100 1000
+# # unfix min1
+# # Save the optimized structure
+# write_data ${structure}_opt.data
+# reset_timestep 0
+
+# # equilibration NVT
+# print "##### Equilibration starts.##### "
+# velocity        all create ${Tl} 12345
+# fix             equil1 all nvt temp ${Tl} ${Tl} ${Td} 
+# # fix             equil1 all npt temp ${Tl} ${Tl} ${Td} tri ${Ph} ${Ph} ${Pd}
+# # 1 ps = 1e3 fs / 0.5 fs = 2e3 steps = 20 nruns
+# # Save trajectory
+# dump dump1 all custom ${nthermo} dump/dump_eq.lammpstrj id type x y z q
+# run             ${nequil}
+# undump dump1
+# reset_timestep  0
+
+
+
+# # Save trajectory
+# dump dump1 all custom ${nthermo} dump/dump_eq.lammpstrj id type x y z q
+# run             ${nequil}
+# undump dump1
+
+# # Equilibrate at reference temperature (300 K)
+# fix 1 all npt temp 300.0 300.0 0.1 iso 0.0 0.0 1.0
+# run ${nequil}
+# unfix 1
+
+
+
+
+# Equilibrate at temperature T
+reset_timestep 0
+velocity        all create ${T} ${seed}
+fix npt1 all npt temp ${T} ${T} ${Td} iso ${P} ${P} ${Pd}
+
+# out put bonds and species information
+# fix bondinfo all reaxff/bonds ${nthermo} bonds/bonds_${T}.reaxff
+# fix speciesinfo all reaxff/species ${nevery} ${nrepeat} ${nthermo} bonds/species_${T}.out
+
+# compute MSD and RDF
+compute msd1 all msd
+fix myMSD all ave/time 10 10 ${nthermo} c_msd1[1] c_msd1[2] c_msd1[3] c_msd1[4] c_thermo_temp &
+    file msd_${T}.out &
+    title2 "# TimeStep MSD_X MSD_Y MSD_Z MSD_Total Temperture"
+# C-C C-Si Si-O C-H Si-Si
+# compute rdf1 all rdf 100 1 1 1 4 3 4 1 2 4 4 cutoff 5.0
+# fix myRDF all ave/time ${nevery} ${nrepeat} ${nfreq} c_rdf1[*] &
+#     file rdf_${T}.out mode vector &
+#     title3 "# Row r g1(r) coor1(r) ..."
+
+run ${nequil}
+# unfix myMSD
+
+# Collect volume and temperature data
+variable myVol equal vol
+# compute myTemp all temp
+# fix ave1 all ave/time 10 10 ${nrun} myVol c_myTemp
+fix ave1 all ave/time 10 10 ${nrun} v_myVol c_thermo_temp &
+    file vol-T_${T}.out &
+    title2 "# TimeStep Vol Temperture"
+
+run ${nrun}
+unfix ave1
+
+clear
+next T
+jump SELF T_loop
+label end
