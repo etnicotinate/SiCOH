@@ -18,17 +18,17 @@ do
         cd $dir
         i=$((i+1))
         echo "task $i, in dir: $dir" 
-        ./run.sh 
-        # sleep 0.5
+        ./run.sh &
+        sleep 0.5
 
         # keep tasks running parallely (56 cores > 6*8, 9*6, 17*2)
-        # if [ $i -eq 3 ]
-        # then
-        #     wait
-        #     echo
-        #     # break
-        #     i=0
-        # fi
+        if [ $i -eq 2 ]
+        then
+            wait
+            echo
+            # break
+            i=0
+        fi
 
         # back to calcs
         cd ..

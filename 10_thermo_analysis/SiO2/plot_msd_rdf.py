@@ -7,17 +7,39 @@ def read_msd(filename):
 
 def plot_msd(filename):
     timesteps, msd_x, msd_y, msd_z, msd_tt, temp = read_msd(filename).T
-    plt.scatter(temp, msd_x, s=.5)
-    plt.scatter(temp, msd_y, s=.5)
-    plt.scatter(temp, msd_z, s=.5)
-    plt.scatter(temp, msd_tt, s=1.5) # total MSD
+    plt.scatter(timesteps, msd_x, s=.5)
+    plt.scatter(timesteps, msd_y, s=.5)
+    plt.scatter(timesteps, msd_z, s=.5)
+    plt.scatter(timesteps, msd_tt, s=1.5) # total MSD
     plt.xlabel('Temperature (K)')
-    plt.ylabel('MSD')
+    plt.ylabel(r'$MSD(\AA^2)$')
     plt.title('Mean Squared Displacement')
     plt.legend([r'$MSD_x$', r'$MSD_y$', r'$MSD_z$', r'$MSD_{total}$'])
     pngname = r'msd.png'
     plt.savefig(pngname, dpi=300)
     print(f'MSD has been plotted to {pngname}')
+
+def calc_mp(filename):
+    timesteps, msd_x, msd_y, msd_z, msd_tt, temp = read_msd(filename).T
+    # derivative of MSD 
+    msd_derivative = np.gradient(msd_tt, temp)
+
+    # # Plot the derivative to find sharp changes
+    # plt.figure()
+    # plt.plot(temperatures, msd_derivative, 'b-', label=r'd(MSD$_{total}$)/dT')
+    # plt.xlabel('Temperature (K)')
+    # plt.ylabel(r'd(MSD)/dT')
+    # plt.legend()
+    # plt.title('Derivative of MSD with respect to Temperature')
+
+    # plt.show()
+
+    # Identify the melting point
+    # where a sharp increase
+    melting_point_index = np.argmax(np.abs(msd_derivative))
+    melting_point_temp = temp[melting_point_index]
+
+    print(f'Estimated Melting Point: {melting_point_temp:.2f} K')
 
 def read_rdf(filename):
     # {Timestep: [[r, g_r, coor_r,...], ...]}
@@ -101,4 +123,5 @@ if __name__ == '__main__':
     msd_filename = r'msd.out'
     rdf_filename = r'rdf.out'
     plot_msd(msd_filename)
+    calc_mp(msd_filename)
     plot_rdf(rdf_filename)

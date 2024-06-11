@@ -59,17 +59,17 @@ def plot_rdf(filename):
     labels = ['Si-O', 'Si-Si', 'O-O']
     # labels = ['C-C', 'C-Si','Si-O', 'C-H', 'Si-Si']
     r = data[:, 0]  # distance, r
-
+    colors = ['g', 'y', 'm']
     for i, label in enumerate(labels):
         g_r = data[:, 2*i+1]  # g(r)
         coor_r = data[:, 2*i+2]  # coor(r)
         
-        plt.plot(r, g_r, label=f'{label}')
+        plt.plot(r, g_r, c=colors[i], label=f'{label}')
         # plt.plot(r, coor_r, label=f'coor(r)')
         
-    plt.xlabel('r')
+    plt.xlabel(r'Distance $(\AA)$')
     plt.ylabel('g(r)')
-    plt.title(f'RDF for timestep {timestep}')
+    plt.title(f'RDF for SiO2')
     plt.legend()
     pngname = 'rdf.png'
     plt.savefig(pngname, dpi=300)

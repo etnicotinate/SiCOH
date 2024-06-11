@@ -1,0 +1,479 @@
+LAMMPS (2 Aug 2023 - Update 2)
+  using 1 OpenMP thread(s) per MPI task
+# Initialization
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+
+variable       timestep equal 0.5   # fs
+variable       T equal 300.0   # low temperature
+variable       Td equal 100*${timestep}  # damping time
+variable       Td equal 100*0.5  
+variable       P equal 1.0  # pressure
+variable       Pd equal 10*${Td}  # pressure
+variable       Pd equal 10*50  
+
+variable       nevery equal 1000
+variable       nrepeat equal 1
+variable       nfreq equal ${nevery}*${nrepeat}
+variable       nfreq equal 1000*${nrepeat}
+variable       nfreq equal 1000*1
+variable       nthermo equal ${nfreq}/10
+variable       nthermo equal 1000/10
+variable       nequil equal 200*${nthermo}  # 2000: 10 ps
+variable       nequil equal 200*100  
+
+variable       seed string 123456
+variable       structure string 333U-50C-26
+variable       FF string "* * SiOCHN_2018.ff C H O Si"          # force field args for pair_coeff
+# pair_coeff * * CHONSSi.ff C H O Si
+# pair_coeff * * CHOSiNa.ff C H O Si
+# pair_coeff * * SiOCHN_2018.ff C H O Si
+# pair_coeff * * PDMSDecomp.ff C H O Si
+# pair_coeff * * CHONSi.ff C H O Si
+# pair_coeff * * CHOFe.ff O Si
+
+timestep        ${timestep}
+timestep        0.5
+
+# box tilt large
+# Read the initial sctructure
+read_data       ${structure}.data
+read_data       333U-50C-26.data
+Reading data file ...
+  triclinic box = (0 0 0) to (17.6144 14.9838 17.4642) with tilt (-6.9346 2.088 0.8795)
+  2 by 1 by 2 MPI processor grid
+  reading atoms ...
+  365 atoms
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     0 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+     1 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_data CPU = 0.008 seconds
+
+# Assign the force field
+pair_style reaxff NULL safezone 3.0 mincap 150
+pair_coeff ${FF}
+pair_coeff * * SiOCHN_2018.ff C H O Si
+WARNING: Van der Waals parameters for element SI indicate inner wall+shielding, but earlier atoms indicate a different van der Waals method. This may cause division-by-zero errors. Keeping van der Waals setting for earlier atoms. (src/REAXFF/reaxff_ffield.cpp:251)
+# Charge equilibration for ReaxFF
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+
+neighbor        2 bin
+neigh_modify    every 10 delay 0 check yes
+
+# Energy minimization
+print "*****Minimization starts.*****"
+*****Minimization starts.*****
+# Print system info
+thermo          ${nthermo}
+thermo          100
+thermo_style    custom step temp press density vol pe
+dump dump_opt all custom 1 dump/dump_opt.lammpstrj id type q x y z
+minimize 1.0e-6 1.0e-6 100 1000
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+
+- pair reaxff command: doi:10.1016/j.parco.2011.08.005
+
+@Article{Aktulga12,
+ author = {H. M. Aktulga and J. C. Fogarty and S. A. Pandit and A. Y. Grama},
+ title = {Parallel Reactive Molecular Dynamics: {N}umerical Methods and Algorithmic Techniques},
+ journal = {Parallel Computing},
+ year =    2012,
+ volume =  38,
+ number =  {4--5},
+ pages =   {245--259}
+}
+
+- fix qeq/reaxff command: doi:10.1016/j.parco.2011.08.005
+
+@Article{Aktulga12,
+ author = {H. M. Aktulga and J. C. Fogarty and S. A. Pandit and A. Y. Grama},
+ title = {Parallel Reactive Molecular Dynamics: {N}umerical Methods and Algorithmic Techniques},
+ journal = {Parallel Computing},
+ year =    2012,
+ volume =  38,
+ pages =   {245--259}
+}
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Switching to 'neigh_modify every 1 delay 0 check yes' setting during minimization
+WARNING: Fix qeq/reaxff group is not charge neutral, net charge = -6.56 (src/REAXFF/fix_qeq_reaxff.cpp:392)
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 5 3 3
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 140.8 | 141 | 141.1 Mbytes
+   Step          Temp          Press         Density         Volume         PotEng    
+         0   0              114558.11      1.4343051      4609.3376     -30507.348    
+        36   0             -9407.3563      1.4343051      4609.3376     -34446.653    
+Loop time of 2.20567 on 4 procs for 36 steps with 365 atoms
+
+96.6% CPU use with 4 MPI tasks x 1 OpenMP threads
+
+Minimization stats:
+  Stopping criterion = energy tolerance
+  Energy initial, next-to-last, final = 
+     -30507.3481407126  -34446.6443281189  -34446.6525088614
+  Force two-norm initial, final = 4322.995 385.88265
+  Force max component initial, final = 826.83935 136.85058
+  Final line search alpha, max atom move = 0.00034488762 0.047198071
+  Iterations, force evaluations = 36 64
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 1.299      | 1.4071     | 1.5226     |   7.0 | 63.80
+Bond    | 0.00011119 | 0.00012432 | 0.0001445  |   0.0 |  0.01
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.092166   | 0.20757    | 0.31564    |  18.3 |  9.41
+Output  | 0.011158   | 0.011576   | 0.012021   |   0.3 |  0.52
+Modify  | 0.57538    | 0.57543    | 0.57546    |   0.0 | 26.09
+Other   |            | 0.003836   |            |       |  0.17
+
+Nlocal:          91.25 ave         107 max          80 min
+Histogram: 2 0 0 0 0 0 1 0 0 1
+Nghost:         3557.5 ave        3568 max        3540 min
+Histogram: 1 0 0 0 0 0 1 0 1 1
+Neighs:        48391.8 ave       55782 max       42913 min
+Histogram: 2 0 0 0 0 0 1 0 0 1
+
+Total # of neighbors = 193567
+Ave neighs/atom = 530.32055
+Ave special neighs/atom = 0
+Neighbor list builds = 0
+Dangerous builds = 0
+min_style cg
+# Save the optimized structure
+write_data ${structure}_opt.data
+write_data 333U-50C-26_opt.data
+System init for write_data ...
+undump dump_opt
+reset_timestep 0
+
+velocity        all create ${T} ${seed} dist gaussian
+velocity        all create 300 ${seed} dist gaussian
+velocity        all create 300 123456 dist gaussian
+# equilibration at low T
+print "##### Equilibration starts.##### "
+##### Equilibration starts.##### 
+velocity        all create ${T} 12345
+velocity        all create 300 12345
+# fix             equil1 all nvt temp ${T} ${T} ${Td}
+fix             equil1 all npt temp ${T} ${T} ${Td} tri ${P} ${P} ${Pd}
+fix             equil1 all npt temp 300 ${T} ${Td} tri ${P} ${P} ${Pd}
+fix             equil1 all npt temp 300 300 ${Td} tri ${P} ${P} ${Pd}
+fix             equil1 all npt temp 300 300 50 tri ${P} ${P} ${Pd}
+fix             equil1 all npt temp 300 300 50 tri 1 ${P} ${Pd}
+fix             equil1 all npt temp 300 300 50 tri 1 1 ${Pd}
+fix             equil1 all npt temp 300 300 50 tri 1 1 500
+
+# out put bonds and species information
+fix bondinfo all reaxff/bonds ${nfreq} bonds/bonds.reaxff
+fix bondinfo all reaxff/bonds 1000 bonds/bonds.reaxff
+# fix speciesinfo all reaxff/species ${nevery} ${nrepeat} ${nthermo} bonds/species.out
+
+# compute MSD and RDF
+compute msd1 all msd
+fix myMSD all ave/time 10 10 ${nthermo} c_msd1[1] c_msd1[2] c_msd1[3] c_msd1[4] c_thermo_temp     file msd.out     title2 "# TimeStep MSD_X MSD_Y MSD_Z MSD_Total Temperture"
+fix myMSD all ave/time 10 10 100 c_msd1[1] c_msd1[2] c_msd1[3] c_msd1[4] c_thermo_temp     file msd.out     title2 "# TimeStep MSD_X MSD_Y MSD_Z MSD_Total Temperture"
+# C-C C-Si Si-O C-H Si-Si
+compute rdf1 all rdf 100  1 1  1 4  3 4  1 2 cutoff 5.0
+fix myRDF all ave/time ${nevery} ${nrepeat} ${nfreq} c_rdf1[*]     file rdf.out mode vector     title3 "# Row r g1(r) coor1(r) ..."
+fix myRDF all ave/time 1000 ${nrepeat} ${nfreq} c_rdf1[*]     file rdf.out mode vector     title3 "# Row r g1(r) coor1(r) ..."
+fix myRDF all ave/time 1000 1 ${nfreq} c_rdf1[*]     file rdf.out mode vector     title3 "# Row r g1(r) coor1(r) ..."
+fix myRDF all ave/time 1000 1 1000 c_rdf1[*]     file rdf.out mode vector     title3 "# Row r g1(r) coor1(r) ..."
+
+thermo_style    custom step temp press pe etotal
+# Save trajectory
+dump dump_eq all custom/gz ${nthermo} dump/dump_eq.lammpstrj.gz id type x y z q
+dump dump_eq all custom/gz 100 dump/dump_eq.lammpstrj.gz id type x y z q
+
+run ${nequil}
+run 20000
+WARNING: Compute rdf cutoff less than neighbor cutoff - forcing a needless neighbor list build (src/compute_rdf.cpp:179)
+Neighbor list info ...
+  update: every = 10 steps, delay = 0 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 12
+  ghost atom cutoff = 12
+  binsize = 6, bins = 5 3 3
+  3 neighbor lists, perpetual/occasional/extra = 2 1 0
+  (1) pair reaxff, perpetual
+      attributes: half, newton off, ghost
+      pair build: half/bin/newtoff/ghost
+      stencil: full/ghost/bin/3d
+      bin: standard
+  (2) compute rdf, occasional
+      attributes: half, newton on, cut 7
+      pair build: half/bin/newton/tri
+      stencil: half/bin/3d/tri
+      bin: standard
+  (3) fix qeq/reaxff, perpetual, copy from (1)
+      attributes: half, newton off
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 145.3 | 145.6 | 145.8 Mbytes
+   Step          Temp          Press          PotEng         TotEng    
+         0   300           -6179.5215     -34446.653     -34121.148    
+       100   333.51588      2572.8814     -34461.718     -34099.849    
+       200   445.64585      2965.0625     -34661.599     -34178.066    
+       300   359.40405     -1850.177      -34700.516     -34310.558    
+       400   367.74554     -282.84052     -34831.176     -34432.166    
+       500   373.53481      1252.0034     -34955.74      -34550.449    
+       600   319.36655     -5111.2264     -35002.575     -34656.057    
+       700   322.27266     -6173.9305     -35079.481     -34729.811    
+       800   299.32104      12902.254     -35101.482     -34776.714    
+       900   358.289       -1907.7512     -35204.9       -34816.151    
+      1000   368.62338      4785.989      -35329.738     -34929.776    
+      1100   367.3806       2038.5131     -35437.279     -35038.665    
+      1200   349.8913       2653.1615     -35526.94      -35147.303    
+      1300   306.74412     -1193.8187     -35550.392     -35217.57     
+      1400   299.00416     -6328.8143     -35586.263     -35261.839    
+      1500   320.40931     -8388.0724     -35644.413     -35296.764    
+      1600   273.76877     -7644.8187     -35620.476     -35323.433    
+      1700   278.17636      4091.8663     -35602.935     -35301.109    
+      1800   360.36378      3288.0919     -35657.312     -35266.312    
+      1900   307.38748      1563.4315     -35641.207     -35307.687    
+      2000   325.55184      9610.9497     -35724.183     -35370.954    
+      2100   318.41673     -6204.8582     -35775.829     -35430.343    
+      2200   314.23285     -3649.2625     -35828.132     -35487.185    
+      2300   314.14286     -3190.0846     -35883.43      -35542.58     
+      2400   352.07968     -8273.4856     -35969.63      -35587.619    
+      2500   312.31632      13620.769     -35991.011     -35652.143    
+      2600   308.2192       15686.065     -36038.435     -35704.013    
+      2700   277.5285      -4477.931      -36059.227     -35758.105    
+      2800   315.13471     -7675.5076     -36152.151     -35810.225    
+      2900   265.76432     -6437.932      -36142.308     -35853.95     
+      3000   291.71052     -74.46421      -36200.229     -35883.719    
+      3100   257.01029      10371.514     -36170.765     -35891.905    
+      3200   291.64834      7522.4502     -36189.41      -35872.967    
+      3300   310.39247     -3782.7393     -36205.326     -35868.545    
+      3400   282.3007      -3600.5705     -36199.631     -35893.331    
+      3500   344.14862     -1727.1114     -36298.594     -35925.188    
+      3600   290.9011       2789.8613     -36256.229     -35940.597    
+      3700   280.28215     -67.190729     -36250.344     -35946.234    
+      3800   325.25601     -6765.26       -36298.322     -35945.415    
+      3900   332.6584       2938.1939     -36295.67      -35934.73     
+      4000   281.15735     -7391.2531     -36234.267     -35929.207    
+      4100   349.65499      2713.9749     -36336.904     -35957.523    
+      4200   308.92356      1469.8058     -36327.757     -35992.571    
+      4300   287.94651     -1370.7732     -36307.765     -35995.339    
+      4400   288.9775      -1915.1638     -36307.067     -35993.522    
+      4500   285.72648     -4147.3094     -36324.184     -36014.166    
+      4600   285.4398       6868.0426     -36348.928     -36039.221    
+      4700   288.69985     -3370.1181     -36351.694     -36038.45     
+      4800   301.32526      554.94012     -36323.69      -35996.748    
+      4900   312.28546     -6567.6397     -36322.681     -35983.846    
+      5000   338.89398     -1378.6406     -36381.919     -36014.214    
+      5100   325.51065     -3067.7574     -36397.996     -36044.812    
+      5200   311.07124     -1488.5061     -36400.823     -36063.306    
+      5300   305.2225       7945.3348     -36415.322     -36084.152    
+      5400   310.04292     -5376.3193     -36452.939     -36116.538    
+      5500   308.40711      7821.7572     -36468.803     -36134.177    
+      5600   298.00629     -85.143643     -36472.194     -36148.852    
+      5700   296.66994     -4375.874      -36467.834     -36145.943    
+      5800   282.92296      6062.0563     -36470.904     -36163.929    
+      5900   275.69166     -1727.3895     -36498.812     -36199.683    
+      6000   277.73732     -950.38471     -36487.229     -36185.88     
+      6100   301.07708      914.14229     -36492.929     -36166.256    
+      6200   291.95737     -7456.8482     -36472.408     -36155.63     
+      6300   318.31989      5309.4666     -36518.559     -36173.177    
+      6400   287.13571     -9349.8192     -36516.999     -36205.452    
+      6500   338.47415      7450.1372     -36579.662     -36212.412    
+      6600   274.95391     -4593.3859     -36508.66      -36210.331    
+      6700   302.83145      3108.9339     -36533.367     -36204.79     
+      6800   317.69639     -2424.6441     -36526.507     -36181.802    
+      6900   321.32248     -4710.4732     -36553.587     -36204.948    
+      7000   295.31689     -1009.2363     -36550.582     -36230.159    
+      7100   306.38981      10599.069     -36565.507     -36233.069    
+      7200   297.96755      8531.5386     -36548.729     -36225.43     
+      7300   320.37288     -6668.8688     -36568.162     -36220.553    
+      7400   300.82177     -823.34015     -36548.39      -36221.994    
+      7500   303.49846      5725.2037     -36571.721     -36242.421    
+      7600   276.13167     -6393.8783     -36561.542     -36261.935    
+      7700   298.21425      7515.6493     -36585.848     -36262.281    
+      7800   297.34195     -11446.726     -36545.994     -36223.374    
+      7900   328.06437     -2474.6726     -36570.476     -36214.522    
+      8000   322.30073     -5002.8072     -36580.325     -36230.624    
+      8100   308.17568      4215.7629     -36595.715     -36261.34     
+      8200   296.07554     -1189.144      -36595.677     -36274.431    
+      8300   278.91108     -4232.4355     -36569.034     -36266.412    
+      8400   325.95944     -1642.5747     -36611.941     -36258.271    
+      8500   300.46592      5730.6647     -36606.198     -36280.188    
+      8600   289.06857      2237.2152     -36619.694     -36306.05     
+      8700   307.72488     -1906.1655     -36646.385     -36312.499    
+      8800   281.10631      5821.5733     -36609.628     -36304.623    
+      8900   312.81623     -695.2023      -36634.285     -36294.875    
+      9000   326.63547     -7142.6839     -36679.72      -36325.315    
+      9100   319.05757      1780.7208     -36704.707     -36358.525    
+      9200   278.20142      4202.0259     -36678.835     -36376.982    
+      9300   302.45        -49.69498      -36697.968     -36369.806    
+      9400   321.91615     -3774.2957     -36704.366     -36355.082    
+      9500   308.42313     -8605.9895     -36698.585     -36363.942    
+      9600   339.84651      3006.892      -36782.819     -36414.08     
+      9700   320.75449      9378.588      -36807.767     -36459.743    
+      9800   295.24974     -5924.8258     -36820.125     -36499.775    
+      9900   297.63415     -5007.6619     -36840.767     -36517.829    
+     10000   310.01606     -5490.2319     -36862.965     -36526.593    
+     10100   330.41857     -1849.4836     -36890.43      -36531.921    
+     10200   321.68205     -4901.831      -36908.337     -36559.307    
+     10300   270.43599     -7298.5492     -36866.6       -36573.173    
+     10400   290.94083     -12252.889     -36886.972     -36571.296    
+     10500   311.03256     -7155.8299     -36886.399     -36548.924    
+     10600   343.21641      5643.4622     -36891.115     -36518.72     
+     10700   332.78551     -104.22146     -36900.235     -36539.157    
+     10800   326.20848      13194.946     -36914.147     -36560.206    
+     10900   312.58508      2350.4705     -36929.138     -36589.979    
+     11000   289.69208      8534.965      -36919.69      -36605.37     
+     11100   280.42279      1695.3096     -36908.914     -36604.651    
+     11200   305.44421     -2441.5294     -36928.511     -36597.1      
+     11300   298.07348     -4240.4137     -36940.913     -36617.499    
+     11400   301.92129      3681.6825     -36967.149     -36639.56     
+     11500   271.02798     -2546.5946     -36935.754     -36641.685    
+     11600   301.56677      3828.799      -36940.694     -36613.489    
+     11700   327.77922     -3093.8043     -36955.163     -36599.518    
+     11800   328.94198      1570.0038     -36964.477     -36607.57     
+     11900   312.09887     -3672.2915     -36956.086     -36617.454    
+     12000   271.40285      6734.9375     -36926.053     -36631.577    
+     12100   285.60918     -2853.6118     -36934.185     -36624.294    
+     12200   312.66282      552.70223     -36926.506     -36587.262    
+     12300   321.94824     -3630.7313     -36925.374     -36576.055    
+     12400   321.08131      2253.9562     -36955.955     -36607.577    
+     12500   300.88655      3405.785      -36960.979     -36634.513    
+     12600   294.30106      6485.668      -36958.791     -36639.47     
+     12700   285.78315      808.30425     -36946.23      -36636.151    
+     12800   317.45242      21.277936     -36948.654     -36604.213    
+     12900   335.67746     -5213.0338     -36960.973     -36596.758    
+     13000   308.45708     -6770.0231     -36954.101     -36619.42     
+     13100   299.79076     -8214.5354     -36957.231     -36631.953    
+     13200   315.6211      -654.54293     -36985.048     -36642.595    
+     13300   303.63462     -1785.1532     -36999.752     -36670.304    
+     13400   288.71707      128.50039     -36998.231     -36684.969    
+     13500   309.75837     -8092.5038     -37032.084     -36695.992    
+     13600   266.29637     -14055.814     -36999.425     -36710.489    
+     13700   278.69951     -6711.6404     -37019.968     -36717.574    
+     13800   313.59081      2348.5163     -37033.509     -36693.259    
+     13900   319.53107     -769.24665     -37028.04      -36681.344    
+     14000   305.94032      7765.5209     -37026.009     -36694.059    
+     14100   280.9511      -60.992412     -37021.207     -36716.371    
+     14200   275.13395     -922.15974     -37039.057     -36740.532    
+     14300   296.52013      2597.2619     -37066.795     -36745.066    
+     14400   308.59887     -7902.7968     -37049.608     -36714.774    
+     14500   317.78467     -1051.5263     -37035.745     -36690.944    
+     14600   320.57988      2185.8489     -37027.774     -36679.94     
+     14700   301.59501      9010.2015     -37029.515     -36702.28     
+     14800   289.99885     -2849.4325     -37039.811     -36725.158    
+     14900   290.52547     -2405.3892     -37044.067     -36728.842    
+     15000   300.0591       3331.6262     -37063.814     -36738.245    
+     15100   308.66756      3181.2951     -37055.702     -36720.794    
+     15200   324.46993      6390.182      -37043.884     -36691.829    
+     15300   326.31575      11634.372     -37055.698     -36701.641    
+     15400   279.65921     -9050.1745     -37013.385     -36709.951    
+     15500   310.70971      14703.591     -37058.799     -36721.674    
+     15600   316.51445     -1722.794      -37081.519     -36738.096    
+     15700   277.1506      -6481.167      -37054.749     -36754.036    
+     15800   307.40545      2288.8878     -37070.934     -36737.395    
+     15900   317.56254     -2080.2859     -37049.684     -36705.123    
+     16000   306.4618       1546.0298     -37059.313     -36726.797    
+     16100   321.39603     -354.18073     -37102.033     -36753.313    
+     16200   297.89574      2923.4044     -37095.856     -36772.634    
+     16300   303.9572       4715.8107     -37104.611     -36774.812    
+     16400   283.33693     -662.04838     -37070.006     -36762.581    
+     16500   318.52847      3879.2137     -37072.459     -36726.851    
+     16600   329.34317     -6421.4845     -37081.692     -36724.35     
+     16700   320.92783     -1812.317      -37092.332     -36744.12     
+     16800   321.55171     -1646.1181     -37112.669     -36763.781    
+     16900   299.65185      2718.2979     -37091.296     -36766.169    
+     17000   311.85522     -3408.4163     -37113.319     -36774.952    
+     17100   308.84249      3422.6552     -37148.628     -36813.53     
+     17200   324.01074     -827.84617     -37175.565     -36824.009    
+     17300   309.3298      -2374.0869     -37156.212     -36820.585    
+     17400   286.40689      907.02548     -37112.84      -36802.084    
+     17500   339.26873      2161.5056     -37144.656     -36776.544    
+     17600   298.50622      682.7658      -37110.63      -36786.746    
+     17700   272.67066     -7379.4759     -37126.131     -36830.279    
+     17800   280.45177     -3842.3517     -37134.816     -36830.521    
+     17900   295.37534     -7899.7019     -37131.137     -36810.651    
+     18000   312.38166      2813.0855     -37129.044     -36790.105    
+     18100   307.36518      7085.0449     -37116.209     -36782.713    
+     18200   312.74081      9835.5665     -37133.62      -36794.292    
+     18300   283.9395      -3183.4793     -37139.894     -36831.816    
+     18400   307.81667     -9655.4742     -37161.161     -36827.175    
+     18500   298.05578     -495.45084     -37132.499     -36809.104    
+     18600   294.64407     -5358.5679     -37122.134     -36802.441    
+     18700   315.77725      3126.4801     -37160.738     -36818.115    
+     18800   288.44708     -2296.0465     -37161.683     -36848.714    
+     18900   289.48152      4854.9976     -37160.877     -36846.785    
+     19000   324.99618      4400.7858     -37180.017     -36827.391    
+     19100   307.33669     -4266.2987     -37156.984     -36823.519    
+     19200   307.78138     -2970.0897     -37165.973     -36832.026    
+     19300   280.11272     -4651.7211     -37181.253     -36877.326    
+     19400   300.59022      5127.1361     -37208.665     -36882.521    
+     19500   325.76684      6249.3682     -37210.617     -36857.155    
+     19600   309.68681     -6645.0589     -37180.822     -36844.808    
+     19700   291.48314     -5079.0988     -37158.862     -36842.598    
+     19800   330.48821     -7412.1264     -37199.653     -36841.068    
+     19900   299.03703     -2493.7326     -37168.378     -36843.918    
+     20000   296.22209      7440.7603     -37172.407     -36851.002    
+Loop time of 535.039 on 4 procs for 20000 steps with 365 atoms
+
+Performance: 1.615 ns/day, 14.862 hours/ns, 37.380 timesteps/s, 13.644 katom-step/s
+98.5% CPU use with 4 MPI tasks x 1 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 415.46     | 433.17     | 445.98     |  61.5 | 80.96
+Bond    | 0.043154   | 0.044726   | 0.047561   |   0.8 |  0.01
+Neigh   | 10.146     | 10.248     | 10.375     |   2.6 |  1.92
+Comm    | 5.8492     | 18.711     | 36.473     | 297.0 |  3.50
+Output  | 0.069058   | 0.19496    | 0.33488    |  21.9 |  0.04
+Modify  | 72.044     | 72.243     | 72.427     |   1.6 | 13.50
+Other   |            | 0.4258     |            |       |  0.08
+
+Nlocal:          91.25 ave         105 max          74 min
+Histogram: 1 0 0 0 1 0 0 0 1 1
+Nghost:        3337.75 ave        3382 max        3289 min
+Histogram: 1 0 1 0 0 0 0 0 1 1
+Neighs:        43904.5 ave       50082 max       36311 min
+Histogram: 1 0 0 0 1 0 0 1 0 1
+
+Total # of neighbors = 175618
+Ave neighs/atom = 481.14521
+Ave special neighs/atom = 0
+Neighbor list builds = 516
+Dangerous builds = 5
+# Save the equilibrated structure
+write_data ${structure}_eq.data
+write_data 333U-50C-26_eq.data
+System init for write_data ...
+WARNING: Compute rdf cutoff less than neighbor cutoff - forcing a needless neighbor list build (src/compute_rdf.cpp:179)
+undump dump_eq
+unfix myMSD
+unfix myRDF
+
+Total wall time: 0:08:57

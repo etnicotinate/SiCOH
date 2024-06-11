@@ -12,12 +12,34 @@ def plot_msd(filename):
     plt.scatter(temp, msd_z, s=.5)
     plt.scatter(temp, msd_tt, s=1.5) # total MSD
     plt.xlabel('Temperature (K)')
-    plt.ylabel('MSD')
+    plt.ylabel(r'$MSD (\AA^2)$')
     plt.title('Mean Squared Displacement')
     plt.legend([r'$MSD_x$', r'$MSD_y$', r'$MSD_z$', r'$MSD_{total}$'])
     pngname = r'msd.png'
     plt.savefig(pngname, dpi=300)
     print(f'MSD has been plotted to {pngname}')
+
+def calc_mp(filename):
+    timesteps, msd_x, msd_y, msd_z, msd_tt, temp = read_msd(filename).T
+    # derivative of MSD 
+    msd_derivative = np.gradient(msd_tt, temp)
+
+    # Plot the derivative to find sharp changes
+    plt.figure()
+    plt.plot(temp, msd_derivative, 'b.', label=r'd(MSD$_{total}$)/dT')
+    plt.xlabel('Temperature (K)')
+    plt.ylabel(r'd(MSD)/dT')
+    plt.legend()
+    plt.title('Derivative of MSD with respect to Temperature')
+    plt.savefig('dmsd.png', dpi=300)
+    print(r'd(MSD)/dT has been plotted to dmsd.png')
+
+    # Identify the melting point
+    # where a sharp increase
+    melting_point_index = np.argmax(np.abs(msd_derivative))
+    melting_point_temp = temp[melting_point_index]
+
+    print(f'Estimated Melting Point: {melting_point_temp:.2f} K')
 
 def read_rdf(filename):
     # {Timestep: [[r, g_r, coor_r,...], ...]}
@@ -54,8 +76,12 @@ def plot_rdf(filename):
     rdf_data = read_rdf(filename)
     plt.figure(figsize=(8,6))
     
-    # Extract the 1st frame
-    timestep, data = next(iter(rdf_data.items()))
+    # Extract the 1st frame (timestep 0)
+    it_rdf = iter(rdf_data.items())
+    # Extract the average 1-1000 frame (timestep 0-1000)
+    # next(it_rdf)
+    timestep, data = next(it_rdf)
+    
     labels = ['C-C', 'C-Si','Si-O']
     # labels = ['C-C', 'C-Si','Si-O', 'C-H', 'Si-Si']
     r = data[:, 0]  # distance, r
@@ -101,4 +127,5 @@ if __name__ == '__main__':
     msd_filename = r'msd.out'
     rdf_filename = r'rdf.out'
     plot_msd(msd_filename)
-    plot_rdf(rdf_filename)
+    calc_mp(msd_filename)
+    # plot_rdf(rdf_filename)

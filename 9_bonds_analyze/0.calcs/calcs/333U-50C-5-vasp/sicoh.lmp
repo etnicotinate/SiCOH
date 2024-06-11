@@ -1,0 +1,88 @@
+# Initialization
+units           real
+dimension       3
+boundary        p p p
+atom_style      full
+timestep        0.5   # fs
+
+variable       nevery equal 1000
+variable       nrepeat equal 1
+variable       nfreq equal ${nevery}*${nrepeat}
+variable       nthermo equal ${nfreq}/10
+variable       nrun equal 1200*${nthermo}          # stpes of equilibrated run 1000 (30 min)
+
+variable temp equal 300.0                # temperature of initial sample
+variable tdamp equal 50.0                 # time constant for thermostat
+variable seed equal 123456                # seed for thermostat
+variable ufac equal 1.01325e-4         # pressure unit conversion, from atm to Gpa
+variable up equal .6                  # the deformation magnitude 0.01 
+
+variable FF string "SiOCHN_2018.ff C H O Si"   # force field args for pair_coeff
+# pair_coeff * * CHONSSi.ff O Si
+# pair_coeff * * CHOSiNa.ff O Si
+# 2019: pair_coeff * * SiOCHN_2018.ff C H O Si 
+# pair_coeff * * PDMSDecomp.ff Si O
+# 2020: pair_coeff * * CHONSi.ff C H O Si 
+# pair_coeff * * CHOFe.ff O Si
+variable structure string 333U-50C-5-vasp
+
+# Read the initial sctructure
+# box tilt large
+read_data       ${structure}.data
+
+# Assign the force field 
+pair_style reaxff NULL safezone 3.0 mincap 150
+pair_coeff * * ${FF}
+# charge method for reaxff
+fix myqeq all qeq/reaxff 1 0.0 10.0 1.0e-6 reaxff maxiter 400
+
+# # Energy minimization
+# print "*****Minimization starts.*****"
+# dump dump_opt all custom 1 dump/dump_opt.lammpstrj id type q x y z
+# minimize 1.0e-6 1.0e-6 100 1000
+# min_style cg
+# # Save the optimized structure
+# write_data ${structure}_opt.data
+# undump dump_opt
+# unfix bondinfo
+
+velocity        all create ${temp} ${seed} dist gaussian
+
+# # Equilibration
+# variable       nequil equal 10*${nthermo}  # 2000: 100 ps
+# include ff.mod.lmp
+# if "$(is_defined(fix,avgp))" then "unfix avgp"
+# if "$(is_defined(fix,avgl))" then "unfix avgl"
+# thermo_style custom step temp pe press density vol
+# dump dump_eq all custom ${nthermo} dump/dump_eq.lammpstrj id type q x y z
+
+# run ${nequil}
+# # Save the equilibrated structure
+# write_data ${structure}_eq.data
+# undump dump_eq
+
+# use tmp to save initial length and tilt
+variable tmp equal lx
+variable lx0 equal ${tmp}
+variable tmp equal ly
+variable ly0 equal ${tmp}
+variable tmp equal lz
+variable lz0 equal ${tmp}
+
+variable tmp equal yz
+variable yz0 equal ${tmp}
+variable tmp equal xz
+variable xz0 equal ${tmp}
+variable tmp equal xy
+variable xy0 equal ${tmp}
+
+# velocity all create ${temp} ${seed} dist gaussian
+# Write restart
+write_restart equil.res
+
+# uzz Perturbation
+variable dir equal 3
+include displace.mod.lmp
+
+
+
